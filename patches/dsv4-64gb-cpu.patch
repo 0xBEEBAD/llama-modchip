@@ -7303,10 +7303,79 @@ index 3bf3a22..b4f5af5 100644
 +    return n_tokens;
  }
 diff --git a/src/models/deepseek4.cpp b/src/models/deepseek4.cpp
-index 89cd461..d190d2c 100644
+index 89cd461..b37356a 100644
 --- a/src/models/deepseek4.cpp
 +++ b/src/models/deepseek4.cpp
-@@ -746,7 +746,8 @@ ggml_tensor * llama_model_deepseek4::graph::build_csa_lid_attention(
+@@ -90,6 +90,10 @@ void llama_model_deepseek4::load_arch_tensors(llama_model_loader & ml) {
+     const int64_t hc_dim      = hc_mult * n_embd;
+     const int64_t hc_mix_dim  = (2 + hc_mult) * hc_mult;
+ 
++    if (n_ff_exp < 256 || n_ff_exp > 65536 || o_groups <= 0 || o_lora_rank < 64 || o_lora_rank > 65536) {
++        throw std::runtime_error("DeepSeek-V4 loader: out-of-bounds hparams (n_ff_exp / o_groups / o_lora_rank)");
++    }
++
+     const bool mtp_only = (n_layer_nextn > 0) && (ml.get_weight("blk.0.attn_norm.weight") == nullptr);
+     const int trunk_flags = mtp_only    ? TENSOR_NOT_REQUIRED : 0;
+     const int mtp_flags   = ml.load_mtp ? 0 : TENSOR_SKIP;
+@@ -114,10 +118,23 @@ void llama_model_deepseek4::load_arch_tensors(llama_model_loader & ml) {
+         layer.wq_b          = create_tensor(tn(LLM_TENSOR_ATTN_Q_B,      "weight", i), {q_lora_rank, n_head * n_embd_head}, flags);
+         layer.wkv           = create_tensor(tn(LLM_TENSOR_ATTN_KV,       "weight", i), {n_embd, n_embd_head}, flags);
+         layer.attn_kv_norm  = create_tensor(tn(LLM_TENSOR_ATTN_KV_NORM,  "weight", i), {n_embd_head}, flags);
+-        // for wo_a, the shape in the file is (n_head * n_embd_head / o_groups, o_lora_rank*o_groups)
++        int64_t o_lora_rank_i = o_lora_rank;
++        if (const ggml_tensor * wo_b_meta = ml.get_tensor_meta(tn(LLM_TENSOR_ATTN_OUT_B, "weight", i).str().c_str())) {
++            if (wo_b_meta->ne[0] <= 0 || wo_b_meta->ne[0] % o_groups != 0) {
++                throw std::runtime_error("DeepSeek-V4 loader: invalid attn_output_b ne[0]=" + std::to_string(wo_b_meta->ne[0]) +
++                                         " at layer " + std::to_string(i));
++            }
++            const int64_t cand_rank = wo_b_meta->ne[0] / o_groups;
++            if (cand_rank < 64 || cand_rank > 4 * o_lora_rank || (cand_rank % 64 != 0)) {
++                throw std::runtime_error("DeepSeek-V4 loader: out-of-bounds per-layer o_lora_rank=" + std::to_string(cand_rank) +
++                                         " at layer " + std::to_string(i));
++            }
++            o_lora_rank_i = cand_rank;
++        }
++        // for wo_a, the shape in the file is (n_head * n_embd_head / o_groups, o_lora_rank_i*o_groups)
+         // so we reshape here, to avoid reshaping the tensor in the graph
+-        layer.wo_a          = create_tensor(tn(LLM_TENSOR_ATTN_OUT_A,    "weight", i), {n_head * n_embd_head / o_groups, o_lora_rank, o_groups}, flags | TENSOR_ALLOW_RESHAPE);
+-        layer.wo_b          = create_tensor(tn(LLM_TENSOR_ATTN_OUT_B,    "weight", i), {o_groups * o_lora_rank, n_embd}, flags);
++        layer.wo_a          = create_tensor(tn(LLM_TENSOR_ATTN_OUT_A,    "weight", i), {n_head * n_embd_head / o_groups, o_lora_rank_i, o_groups}, flags | TENSOR_ALLOW_RESHAPE);
++        layer.wo_b          = create_tensor(tn(LLM_TENSOR_ATTN_OUT_B,    "weight", i), {o_groups * o_lora_rank_i, n_embd}, flags);
+ 
+         layer.hc_attn_fn    = create_tensor(tn(LLM_TENSOR_HC_ATTN_FN,    "weight", i), {hc_dim, hc_mix_dim}, flags);
+         layer.hc_attn_base  = create_tensor(tn(LLM_TENSOR_HC_ATTN_BASE,  "weight", i), {hc_mix_dim}, flags);
+@@ -158,9 +175,27 @@ void llama_model_deepseek4::load_arch_tensors(llama_model_loader & ml) {
+         }
+         layer.ffn_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd}, flags);
+ 
+-        layer.ffn_gate_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", i), {n_embd,   n_ff_exp, n_expert}, flags);
+-        layer.ffn_down_exps = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS, "weight", i), {n_ff_exp, n_embd,   n_expert}, flags);
+-        layer.ffn_up_exps   = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS,   "weight", i), {n_embd,   n_ff_exp, n_expert}, flags);
++        int64_t n_ff_exp_i = n_ff_exp;
++        if (const ggml_tensor * gate_meta = ml.get_tensor_meta(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", i).str().c_str())) {
++            const int64_t cand_ff = gate_meta->ne[1];
++            int64_t req_align = 256;
++            if (const ggml_tensor * down_meta = ml.get_tensor_meta(tn(LLM_TENSOR_FFN_DOWN_EXPS, "weight", i).str().c_str())) {
++                const int64_t bs = ggml_blck_size(down_meta->type);
++                if (bs > req_align) {
++                    req_align = bs;
++                }
++            }
++            if (cand_ff < 256 || cand_ff > 8 * n_ff_exp || (cand_ff % 256 != 0) || (cand_ff % req_align != 0)) {
++                throw std::runtime_error("DeepSeek-V4 loader: invalid per-layer n_ff_exp=" + std::to_string(cand_ff) +
++                                         " at layer " + std::to_string(i) + " (must be in [256, " +
++                                         std::to_string(8 * n_ff_exp) + "] and divisible by " + std::to_string(req_align) + ")");
++            }
++            n_ff_exp_i = cand_ff;
++        }
++        layer.ffn_gate_exps   = create_tensor(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", i), {n_embd,     n_ff_exp_i, n_expert}, flags);
++        layer.ffn_down_exps   = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS, "weight", i), {n_ff_exp_i, n_embd,     n_expert}, flags);
++        layer.ffn_down_exps_b = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS, "bias",   i), {n_embd,     n_expert},            TENSOR_NOT_REQUIRED | flags);
++        layer.ffn_up_exps     = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS,   "weight", i), {n_embd,     n_ff_exp_i, n_expert}, flags);
+ 
+         layer.ffn_gate_shexp = create_tensor(tn(LLM_TENSOR_FFN_GATE_SHEXP, "weight", i), {n_embd,                     n_ff_exp * n_expert_shared}, flags);
+         layer.ffn_down_shexp = create_tensor(tn(LLM_TENSOR_FFN_DOWN_SHEXP, "weight", i), {n_ff_exp * n_expert_shared, n_embd                    }, flags);
+@@ -746,7 +781,8 @@ ggml_tensor * llama_model_deepseek4::graph::build_csa_lid_attention(
      const auto & inp_csa = inp_dsv4->get_csa();
      GGML_ASSERT(inp_csa.kq_mask);
  
@@ -7316,7 +7385,7 @@ index 89cd461..d190d2c 100644
  
      ggml_tensor * k_rot = inp_attn->self_k_rot;
      if (k_rot) {
-@@ -778,7 +779,7 @@ ggml_tensor * llama_model_deepseek4::graph::build_csa_lid_attention(
+@@ -778,7 +814,7 @@ ggml_tensor * llama_model_deepseek4::graph::build_csa_lid_attention(
      cb(k_all, "csa_k_all", il);
  
      ggml_tensor * raw_mask = inp_attn->get_kq_mask();
@@ -7325,7 +7394,16 @@ index 89cd461..d190d2c 100644
  
      ggml_tensor * kq_mask = ggml_concat(ctx0, raw_mask, csa_mask, 0);
      cb(kq_mask, "csa_lid_kq_mask", il);
-@@ -1013,42 +1014,55 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
+@@ -918,7 +954,7 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
+     const int64_t n_embd_head_nope = n_embd_head - n_embd_head_rope;
+     const int64_t n_groups         = hparams.dsv4_o_group_count;
+     const int64_t n_heads_group    = n_head / n_groups;
+-    const int64_t o_lora_rank      = hparams.dsv4_o_lora_rank;
++    const int64_t o_lora_rank      = layer.wo_a ? layer.wo_a->ne[1] : hparams.dsv4_o_lora_rank;
+     const int64_t o_group_dim      = n_heads_group*n_embd_head;
+     const int64_t nt               = cur->ne[1];
+ 
+@@ -1013,42 +1049,55 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
          csa_state_score = ggml_add(ctx0, csa_state_score, csa_ape_rows);
          cb(csa_state_score, "csa_state_score_ape", il);
  
@@ -7413,7 +7491,7 @@ index 89cd461..d190d2c 100644
  
          const dsv4_state_tensors csa_snapshot = dsv4_build_state_snapshot(
                  ctx0, inp_dsv4->get_csa(), csa_state, csa_snapshot_source_kv, csa_snapshot_source_score, il);
-@@ -1082,42 +1096,55 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
+@@ -1082,42 +1131,55 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
          lid_state_score = ggml_add(ctx0, lid_state_score, lid_ape_rows);
          cb(lid_state_score, "lid_state_score_ape", il);
  
@@ -7501,7 +7579,7 @@ index 89cd461..d190d2c 100644
  
          const dsv4_state_tensors lid_snapshot = dsv4_build_state_snapshot(
                  ctx0, inp_dsv4->get_lid(), lid_state, lid_snapshot_source_kv, lid_snapshot_source_score, il);
-@@ -1182,23 +1209,16 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
+@@ -1182,23 +1244,16 @@ ggml_tensor * llama_model_deepseek4::graph::build_attention_impl(
          if (hca_state == nullptr) {
              hca_state = inp_dsv4->mctx->get_hca_state();
          }
@@ -7532,6 +7610,42 @@ index 89cd461..d190d2c 100644
  
          const dsv4_state_tensors hca_snapshot = dsv4_build_state_snapshot(
                  ctx0, inp_dsv4->get_hca(), hca_state, hca_snapshot_source_kv, hca_snapshot_source_score, il);
+@@ -1338,9 +1393,13 @@ llama_model_deepseek4::graph::graph(const llama_model & model, const llm_graph_p
+ 
+         ggml_tensor * moe_out = build_moe_ffn(cur,
+                 layer.ffn_gate_inp,
++                nullptr,
+                 layer.ffn_up_exps,
++                nullptr,
+                 layer.ffn_gate_exps,
++                nullptr,
+                 layer.ffn_down_exps,
++                layer.ffn_down_exps_b,
+                 exp_probs_b,
+                 n_expert, hparams.n_expert_used,
+                 LLM_FFN_SILU, hparams.expert_weights_norm,
+@@ -1352,6 +1411,7 @@ llama_model_deepseek4::graph::graph(const llama_model & model, const llm_graph_p
+                 nullptr,
+                 nullptr,
+                 nullptr,
++                nullptr,
+                 selected_experts);
+         cb(moe_out, "ffn_moe_out", il);
+ 
+@@ -1495,9 +1555,13 @@ llama_model_deepseek4::graph_mtp::graph_mtp(const llama_model & model, const llm
+     GGML_ASSERT((uint32_t) il >= hparams.dsv4_hash_layer_count && "DEEPSEEK4 MTP does not support hash-routed MTP blocks");
+     ggml_tensor * moe_out = build_moe_ffn(cur,
+             layer.ffn_gate_inp,
++            nullptr,
+             layer.ffn_up_exps,
++            nullptr,
+             layer.ffn_gate_exps,
++            nullptr,
+             layer.ffn_down_exps,
++            layer.ffn_down_exps_b,
+             layer.ffn_exp_probs_b,
+             n_expert, hparams.n_expert_used,
+             LLM_FFN_SILU, hparams.expert_weights_norm,
 diff --git a/src/models/qwen35moe.cpp b/src/models/qwen35moe.cpp
 index 38f2a57..2787e66 100644
 --- a/src/models/qwen35moe.cpp

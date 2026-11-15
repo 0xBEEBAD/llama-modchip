@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# install.sh — Interactive Zero-to-Running Installer for llama-modchip (v2.5.4)
+# install.sh — Interactive Zero-to-Running Installer for llama-modchip (v2.5.5)
 # ==============================================================================
 # Usage:
 #   One-liner (from scratch):
@@ -11,7 +11,7 @@
 #
 # Options:
 #   --workspace <dir>      Target build/model directory (default: ./workspace)
-#   --preset <id>          Model preset: dsv4-maxq | dsv4-vq3 | dsv4-fractal | dsv4-ablit |
+#   --preset <id>          Model preset: dsv4-maxq | dsv4-maxq-fractal | dsv4-vq3 | dsv4-fractal | dsv4-ablit |
 #                                        nemotron-vq3 | nemotron-fractal | nemotron-ablit | nemotron-q4
 #   --model <path>         Use an existing local GGUF file instead of downloading
 #   --skip-model           Install engine & scripts without downloading GGUF weights
@@ -291,7 +291,7 @@ if [[ "$NONINTERACTIVE" != "1" && -t 1 && -r /dev/tty ]]; then
 fi
 
 # Hardware-aware safety-aligned default preset:
-#   >= 60 GB RAM -> DeepSeek-V4-Flash-0731-MaxQ-Fractal (safety-aligned single-pass 284B default)
+#   >= 60 GB RAM -> DeepSeek-V4-Flash-0731-MaxQ-v4 (100% donor-free ConeCollapse 284B default, 57.99 GiB)
 #   <  60 GB RAM -> Nemotron-3.5-30B-A3B-VQ3-64 (on AVX-512 VBMI, or <=18 GB RAM except Zen 1/2)
 #                   else Nemotron-3.5-30B-A3B-Fractal-64 (AVX2 / AMD Zen 1-2 / ARM64)
 if [[ "$TOTAL_RAM_GB" -ge 60 ]]; then
@@ -311,8 +311,8 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "------------------------------------------------------------------------------"
         echo " MODEL SELECTION (Detected Host RAM: ~${TOTAL_RAM_GB} GiB | Physical Cores: ${PHYS_CORES})"
         echo "------------------------------------------------------------------------------"
-        echo "  1) DeepSeek-V4-Flash-0731-MaxQ-Fractal        [284B MoE · 56.93 GiB · 3 shards]"
-        echo "     Default 284B (64 GB+ RAM, safety-aligned) — Single-pass Q6_K + Fractal-64"
+        echo "  1) DeepSeek-V4-Flash-0731-MaxQ-v4             [284B MoE · 57.99 GiB · 3 shards]"
+        echo "     Default 284B (64 GB+ RAM, 100% donor-free ConeCollapse · CPU/Metal/CUDA/Vulkan)"
         echo "  2) DeepSeek-V4-Flash-0731-VQ3                 [284B MoE · 56.40 GiB · 3 shards]"
         echo "     Safety-aligned 284B — Hybrid LUT-VQ3-64 + Fractal-64 (AVX-512 VBMI, 64 GB+)"
         echo "  3) DeepSeek-V4-Flash-0731-Fractal             [284B MoE · 56.57 GiB · 3 shards]"
@@ -333,7 +333,8 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
             read -r USER_MODEL_CHOICE < /dev/tty || USER_MODEL_CHOICE="$DEFAULT_MENU_CHOICE"
             USER_MODEL_CHOICE="${USER_MODEL_CHOICE:-$DEFAULT_MENU_CHOICE}"
             case "$USER_MODEL_CHOICE" in
-                1|dsv4-maxq|deepseek)                   MODEL_PRESET="dsv4-maxq"; break ;;
+                1|dsv4-maxq|dsv4-maxq-v4|deepseek)      MODEL_PRESET="dsv4-maxq"; break ;;
+                dsv4-maxq-fractal)                      MODEL_PRESET="dsv4-maxq-fractal"; break ;;
                 2|dsv4-vq3)                             MODEL_PRESET="dsv4-vq3"; break ;;
                 3|dsv4-fractal)                         MODEL_PRESET="dsv4-fractal"; break ;;
                 4|dsv4-ablit|dsv4-abliterated)          MODEL_PRESET="dsv4-ablit"; break ;;
@@ -368,8 +369,27 @@ if [[ "$MODEL_EXPLICIT" == "1" ]]; then
     fi
 else
     case "$MODEL_PRESET" in
-        1|dsv4-maxq|deepseek)
+        1|dsv4-maxq|dsv4-maxq-v4|deepseek)
             MODEL_PRESET="dsv4-maxq"
+            MODEL_FAMILY="dsv4"
+            MODEL_LABEL="DeepSeek-V4-Flash-0731-MaxQ-v4 (284B · 57.99 GiB · 3 shards)"
+            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF"
+            MODEL_REV="48356a120e78c01e82f425a74380f46f3925fb9c"
+            MODEL_SUBDIR="dsv4-maxq-v4"
+            MODEL_SHARDS=(
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00002-of-00003.gguf"
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00003-of-00003.gguf"
+            )
+            MODEL_SHARD_SIZES=(5258336 35543586816 26721192096)
+            MODEL_SHARD_SHA256S=(
+                "6112e887b21d1fdf7b7196232b528698a6ec2d5a59760a040cb4231f8e8d691b"
+                "5d85c740992b70395da5c3e4a856b3fad6ef725271722c8d837b35befe28330d"
+                "a8654d4d5fedf748d6f2b6404a8b7f9e19435a8aa8e2bb97ce9a66bc012c0f3a"
+            )
+            ;;
+        dsv4-maxq-fractal)
+            MODEL_PRESET="dsv4-maxq-fractal"
             MODEL_FAMILY="dsv4"
             MODEL_LABEL="DeepSeek-V4-Flash-0731-MaxQ-Fractal (284B · 56.93 GiB · 3 shards)"
             MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF"
@@ -487,7 +507,7 @@ else
             MODEL_SHARD_SHA256S=("61f87e75974e4b535dcdf9aad056541a9514f1dfa4538b463b081d19b7a00e3c")
             ;;
         *)
-            echo "[!] ERROR: Unknown --preset '${MODEL_PRESET}'. Valid presets: dsv4-maxq, dsv4-vq3, dsv4-fractal, dsv4-ablit, nemotron-vq3, nemotron-fractal, nemotron-ablit, nemotron-q4" >&2
+            echo "[!] ERROR: Unknown --preset '${MODEL_PRESET}'. Valid presets: dsv4-maxq, dsv4-maxq-fractal, dsv4-vq3, dsv4-fractal, dsv4-ablit, nemotron-vq3, nemotron-fractal, nemotron-ablit, nemotron-q4" >&2
             exit 1
             ;;
     esac
@@ -628,10 +648,10 @@ LLAMA_BUILD_DIR="${WORKSPACE_DIR}/llama.cpp"
 
 PREBUILT_OK=0
 if [[ "$USE_PREBUILT" == "1" && -n "$X86_PREBUILT_ASSET" ]]; then
-    ASSET_URL="https://github.com/synchopate/llama-modchip/releases/download/v2.5.4/${X86_PREBUILT_ASSET}"
-    FALLBACK_ASSET_URL="https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF/resolve/cffab09528974ece3aedc6611c534e43e614e722/${X86_PREBUILT_ASSET}"
-    EXPECTED_BIN_SHA256="09f2a1accacb1454aaf0d9a8d75dda8f7cca36df81138eb57bfee45137ef07e4"
-    [[ "$X86_PREBUILT_ASSET" == *-avx512 ]] && EXPECTED_BIN_SHA256="7cf2563ede8670b482ccc7e108d9810023f994a6ce9a3d7bd320f8393dd26304"
+    ASSET_URL="https://github.com/synchopate/llama-modchip/releases/download/v2.5.5/${X86_PREBUILT_ASSET}"
+    FALLBACK_ASSET_URL="https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF/resolve/48356a120e78c01e82f425a74380f46f3925fb9c/${X86_PREBUILT_ASSET}"
+    EXPECTED_BIN_SHA256="a02b27be012edf365f51a1a94fe28640ed8f31cb4b2ed1b793e77eb67473f5e5"
+    [[ "$X86_PREBUILT_ASSET" == *-avx512 ]] && EXPECTED_BIN_SHA256="631a9a9b8da286ef0827b779c863d2b93347bf69186245c86c1c90a7d463f579"
     echo "[*] CPUID selected portable precompiled binary: ${X86_PREBUILT_ASSET}"
     if curl -fL --progress-bar -o "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "$ASSET_URL" \
         || curl -fL --progress-bar -o "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "$FALLBACK_ASSET_URL"; then

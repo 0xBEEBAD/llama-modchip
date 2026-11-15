@@ -100,6 +100,21 @@ if [[ -n "$DSV4_IPC_PATCH" && -f "$DSV4_IPC_PATCH" ]] && git -C "$LLAMA_DIR" app
     IPC_ALREADY_APPLIED=1
 fi
 
+# Detect pre-v2.5.5 DeepSeek-V4 trees missing ConeCollapse per-layer n_ff_exp_i / ffn_down_exps_b or still holding legacy /tmp IPC
+if [[ "$TARGET_MODEL" == "dsv4" || "$TARGET_MODEL" == "deepseek" ]] && [[ -f "$LLAMA_DIR/src/models/deepseek4.cpp" ]]; then
+    if ! grep -q "ffn_down_exps_b" "$LLAMA_DIR/src/models/deepseek4.cpp" 2>/dev/null || grep -q "dsv4_moe_cfg.bin" "$LLAMA_DIR/src/models/deepseek4.cpp" 2>/dev/null; then
+        echo "[*] Detected pre-v2.5.5 deepseek4.cpp in $LLAMA_DIR — resetting tree to apply v2.5.5 ConeCollapse & security patches..."
+        SERIES_APPLIED=0
+        VQ3_ALREADY_APPLIED=0
+        IPC_ALREADY_APPLIED=0
+        git -C "$LLAMA_DIR" checkout HEAD -- .
+        rm -f "$LLAMA_DIR/ggml/src/vq3_codebook.h"
+        while read -r created_file; do
+            [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
+        done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
+    fi
+fi
+
 echo "[*] Applying 256K Hybrid SWA + Fractal-64 SIMD/Metal + L3 NTA + 2MB HugePages patch ($(basename "$PATCH_FILE"))..."
 if [[ "$SERIES_APPLIED" == "1" || "$VQ3_ALREADY_APPLIED" == "1" || "$IPC_ALREADY_APPLIED" == "1" ]]; then
     echo "[i] Base patch and stacked patches already applied cleanly in $LLAMA_DIR."

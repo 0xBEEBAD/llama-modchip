@@ -41,7 +41,7 @@ $BuildDir   = if ($Cuda) { Join-Path $LlamaDir "build-cuda" } else { Join-Path $
 function Fail([string]$Msg) { Write-Host "[!] $Msg" -ForegroundColor Red; exit 1 }
 
 Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "  llama-modchip v2.5.4 Windows engine build (Fractal-64 Q2_0 + LUT-VQ3-64 VQ3_0)" -ForegroundColor Green
+Write-Host "  llama-modchip v2.5.5 Windows engine build (ConeCollapse + Fractal-64 + VQ3-64)" -ForegroundColor Green
 Write-Host ("  Target : {0} | Backend: {1}" -f $Target, $(if ($Cuda) { "CUDA sm_$Arch + CPU (MSVC)" } else { "CPU Native SIMD (MinGW-w64)" })) -ForegroundColor Green
 Write-Host "================================================================================" -ForegroundColor Cyan
 

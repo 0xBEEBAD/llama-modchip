@@ -19,7 +19,15 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LLAMA_DIR="${LLAMA_DIR:-$HERE/../workspace/llama.cpp-dsv4/build}"
-MODEL="${MODEL:-$HOME/models/dsv4/DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf}"
+if [[ -z "${MODEL:-}" ]]; then
+    if [[ -f "$HOME/models/dsv4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf" ]]; then
+        MODEL="$HOME/models/dsv4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
+    elif [[ -f "$HERE/../workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf" ]]; then
+        MODEL="$HERE/../workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
+    else
+        MODEL="$HOME/models/dsv4/DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf"
+    fi
+fi
 PORT="${PORT:-8789}"
 CTX="${CTX:-32768}"
 THREADS="${THREADS:-12}"

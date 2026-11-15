@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-llama-modchip v2.5.4 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
+llama-modchip v2.5.5 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
 Connects to local Gateway (8787) or llama-server (8789/8080/8001), streams tokens live,
 and reports exact Prefill tok/s, Decode tok/s, TTFT, and Stockfish-PVS (M=7) draft acceptance.
 """
@@ -142,6 +142,8 @@ def detect_active_model(base_url: str) -> Tuple[str, str, str]:
     if "deepseek" in low or "dsv4" in low:
         if "abliterated" in low:
             display = f"{base_clean} (284B MoE / 13.2B Active · Single-Pass Q6_K + Fractal-64 · Uncensored)"
+        elif "maxq-v4" in low or "maxq_v4" in low:
+            display = f"{base_clean} (284B MoE / 13.2B Active · ConeCollapse + DualGram · Donor-Free)"
         elif "vq3" in low:
             display = f"{base_clean} (284B MoE / 13.2B Active · LUT-VQ3-64 3.00-bpw + Fractal-64)"
         elif "fractal" in low:
@@ -695,7 +697,7 @@ def run_benchmark_suite(base_url: str) -> None:
     aff_header = get_server_affinity_summary(base_url)
     raw_model, model_display, prompt_label = detect_active_model(base_url)
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.4 — Automated 2-Stage CPU Benchmark Suite                    ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.5 — Automated 2-Stage CPU Benchmark Suite                    ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_header}")
     if aff_header:
@@ -747,7 +749,7 @@ def run_benchmark_suite(base_url: str) -> None:
         ).strip()
     except Exception:
         pass
-    ver_tag = f"v2.5.4 ({git_rev})" if git_rev else "v2.5.4"
+    ver_tag = f"v2.5.5 ({git_rev})" if git_rev else "v2.5.5"
     banner_text = f"LLAMA-MODCHIP {ver_tag} BENCHMARK SCORECARD"
     vis_w = sum(2 if ord(ch) > 0xFFFF else 1 for ch in banner_text)
     banner_line = f"║ {banner_text}{' ' * max(1, 83 - vis_w)}║"
@@ -829,7 +831,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
         return
 
     print(f"{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.4 — Interactive CPU Chat + Live Stockfish-PVS Telemetry      ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.5 — Interactive CPU Chat + Live Stockfish-PVS Telemetry      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_banner}")
     print(f"  • Model    : {BOLD}{GREEN}{model_display}{RESET}")
@@ -888,7 +890,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="llama-modchip v2.5.4 Interactive Terminal Chat & Benchmark Client")
+    parser = argparse.ArgumentParser(description="llama-modchip v2.5.5 Interactive Terminal Chat & Benchmark Client")
     parser.add_argument("--url", default=None, help="Server or Gateway base URL (auto-detected by default)")
     parser.add_argument("--bench", action="store_true", help="Run the 2-stage benchmark suite and print shareable scorecard")
     parser.add_argument("-p", "--prompt", default=None, help="Send a single prompt, stream output, print tok/s, and exit")

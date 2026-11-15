@@ -61,10 +61,10 @@ function Find-Model {
         return (Resolve-Path $Model).Path
     }
     if (-not (Test-Path $ModelDir)) { throw "Model folder not found: $ModelDir" }
-    # Prefer safety-aligned split GGUFs first (MaxQ-Fractal -> VQ3 -> Fractal), then opt-in Abliterated
+    # Prefer safety-aligned split GGUFs first (MaxQ-v4 -> MaxQ-Fractal -> VQ3 -> Fractal), then opt-in Abliterated
     $shard1Files = @(Get-ChildItem -LiteralPath $ModelDir -Filter "*.gguf" -File |
                      Where-Object { $_.Name -match "-00001-of-\d+\.gguf$" })
-    foreach ($pat in @("MaxQ-Fractal", "VQ3", "Fractal", "Abliterated")) {
+    foreach ($pat in @("MaxQ-v4", "MaxQ-Fractal", "VQ3", "Fractal", "Abliterated")) {
         $match = $shard1Files | Where-Object {
             if ($pat -eq "Abliterated") { $_.Name -match "Abliterated" }
             else { ($_.Name -notmatch "Abliterated") -and ($_.Name -match $pat) }

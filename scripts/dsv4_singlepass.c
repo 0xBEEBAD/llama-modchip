@@ -69,10 +69,10 @@ static float g_cb_c22[128] __attribute__((aligned(64)));
 static int g_sp_init = 0;
 
 void sp_init(void) {
-    if (g_sp_init) return;
-    #pragma omp critical
+    if (__atomic_load_n(&g_sp_init, __ATOMIC_ACQUIRE)) return;
+    #pragma omp critical(sp_init_lock)
     {
-        if (!g_sp_init) {
+        if (!__atomic_load_n(&g_sp_init, __ATOMIC_RELAXED)) {
             ggml_cpu_init();
             ggml_quantize_init(16);
             ggml_quantize_init(19);
@@ -101,7 +101,7 @@ void sp_init(void) {
                 g_cb_q1[c] = v1; g_cb_c21[c] = v1 * v1;
                 g_cb_q2[c] = v2; g_cb_c22[c] = v2 * v2;
             }
-            g_sp_init = 1;
+            __atomic_store_n(&g_sp_init, 1, __ATOMIC_RELEASE);
         }
     }
 }
