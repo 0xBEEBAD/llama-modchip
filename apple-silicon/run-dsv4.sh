@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # run-dsv4.sh — DeepSeek-V4-Flash-0731-Fractal (284B, 56.56 GiB) on an Apple Silicon Mac with 64 GB.
 #
-# Build the engine first with ./build-dsv4-engine.sh (llama.cpp d2f83055 + patches/dsv4-64gb-cpu.patch
-# + patches/apple-silicon/*.patch). Stock llama.cpp mis-decodes the Q2_0 tensors on a Mac.
+# Build the engine first with ./build-dsv4-engine.sh (unified llama-modchip v3.0:
+# llama.cpp de32b268c + patches/llama-modchip-v3.0.patch). Stock llama.cpp cannot load
+# FRACTAL_64 (44) / VQ3_64 (45) GGUFs.
 #
 # PROFILE=fast    (default) experts of 5 pure-IQ1_S layers on the CPU. ~51.8 GB on the GPU, so it needs
 #                 `sudo sysctl iogpu.wired_limit_mb=57344` (resets at reboot). Measured on an M5 Max:
@@ -18,7 +19,15 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LLAMA_DIR="${LLAMA_DIR:-$HERE/../workspace/llama.cpp-dsv4/build}"
+if [[ -z "${LLAMA_DIR:-}" ]]; then
+    if [[ -x "$HERE/../workspace/llama.cpp-v3/build/bin/llama-server" ]]; then
+        LLAMA_DIR="$HERE/../workspace/llama.cpp-v3/build"
+    elif [[ -x "$HERE/../llama.cpp/build/bin/llama-server" ]]; then
+        LLAMA_DIR="$HERE/../llama.cpp/build"
+    else
+        LLAMA_DIR="$HERE/../workspace/llama.cpp-dsv4/build"
+    fi
+fi
 if [[ -z "${MODEL:-}" ]]; then
     if [[ -f "$HOME/models/dsv4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf" ]]; then
         MODEL="$HOME/models/dsv4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"

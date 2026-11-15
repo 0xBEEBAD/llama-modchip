@@ -3,21 +3,18 @@
     [switch]$Clean,
     [switch]$EnableAvx512,
     [switch]$DisableAvx512,
-    [ValidateSet("dsv4", "nemotron")]
-    [string]$Target = "dsv4",
+    [ValidateSet("all", "qwen38", "dsv4", "nemotron")]
+    [string]$Target = "all",
     [string]$Arch = "89",
     [string]$SrcRoot = ""
 )
 
-# Builds the patched llama.cpp engine needed by Fractal-64 (GGML_TYPE_Q2_0 = 42) and
-# LUT-VQ3-64 (GGML_TYPE_VQ3_0 = 43) GGUFs on Windows.
-# Stock llama.cpp cannot load them: the patch changes Q2_0 to 30 bytes / 64 weights
-# and adds VQ3_0 at 24 bytes / 64 weights.
-#
-# Usage:
-#   powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1
-#   powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1 -Target nemotron
-#   powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1 -Cuda
+# Builds the unified llama-modchip v3.0 engine on Windows (MinGW-w64 CPU or MSVC + CUDA).
+# Supports Qwen3.8-Flash-Next, DeepSeek-V4-Flash, and Nemotron-3.5-30B with zero-collision custom types:
+#   - GGML_TYPE_Q2_0       = 42 (upstream 18 B/64 untouched)
+#   - GGML_TYPE_F8_E4M3    = 43 (upstream untouched)
+#   - GGML_TYPE_FRACTAL_64 = 44 (30 B/64)
+#   - GGML_TYPE_VQ3_64     = 45 (24 B/64)
 
 $ErrorActionPreference = "Stop"
 
@@ -25,23 +22,16 @@ $WindowsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot   = Split-Path -Parent $WindowsDir
 if (-not $SrcRoot) { $SrcRoot = Join-Path $RepoRoot "workspace" }
 
-$BaseCommit = "d2f83055d6e3b379b5d34c4837122a918cf402c2"
-$PatchFile  = if ($Target -eq "nemotron") {
-    Join-Path $RepoRoot "patches\zen5-nemotron-256k-optimizations.patch"
-} else {
-    Join-Path $RepoRoot "patches\deepseek-v4-flash-fractal-256k.patch"
-}
-$Vq3Patch   = Join-Path $RepoRoot "patches\lut-vq3-64-avx512-vbmi.patch"
-$Dsv4IpcPatch = Join-Path $RepoRoot "patches\dsv4-ipc-hardening.patch"
-$HeadersDir = Join-Path $RepoRoot "speculative\cpp"
+$BaseCommit = "de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
+$PatchFile  = Join-Path $RepoRoot "patches\llama-modchip-v3.0.patch"
 $LlamaDir   = Join-Path $SrcRoot "llama.cpp-src"
-$OutDir     = Join-Path $WindowsDir "bin-modchip"
+$OutDir     = if ($Cuda) { Join-Path $WindowsDir "bin-modchip-cuda" } else { Join-Path $WindowsDir "bin-modchip" }
 $BuildDir   = if ($Cuda) { Join-Path $LlamaDir "build-cuda" } else { Join-Path $LlamaDir "build-mingw" }
 
 function Fail([string]$Msg) { Write-Host "[!] $Msg" -ForegroundColor Red; exit 1 }
 
 Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "  llama-modchip v2.5.5 Windows engine build (ConeCollapse + Fractal-64 + VQ3-64)" -ForegroundColor Green
+Write-Host "  llama-modchip v3.0 Unified Windows Engine Build (Qwen3.8 + DeepSeek-V4 + Nemotron)" -ForegroundColor Green
 Write-Host ("  Target : {0} | Backend: {1}" -f $Target, $(if ($Cuda) { "CUDA sm_$Arch + CPU (MSVC)" } else { "CPU Native SIMD (MinGW-w64)" })) -ForegroundColor Green
 Write-Host "================================================================================" -ForegroundColor Cyan
 
@@ -67,129 +57,13 @@ try {
     }
     Write-Host "[*] Resetting working tree ..." -ForegroundColor Cyan
     & $git checkout -q -- .
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir "ggml\src\vq3_codebook.h")
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir "src\llama-kv-cache-dsv4.cpp")
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir "src\llama-kv-cache-dsv4.h")
-    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir "src\models\deepseek4.cpp")
+    foreach ($f in "ggml\src\vq3_codebook.h", "common\rc_predictor.h", "common\rc_stockfish.h", "common\rc_trie_v2.h") {
+        Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir $f)
+    }
 
     Write-Host ("[*] Applying {0} ..." -f (Split-Path -Leaf $PatchFile)) -ForegroundColor Cyan
     & $git apply $PatchFile
     if ($LASTEXITCODE -ne 0) { Fail "Patch does not apply. Expected llama.cpp at $BaseCommit." }
-
-    if (Test-Path $Vq3Patch) {
-        Write-Host "[*] Applying patches\lut-vq3-64-avx512-vbmi.patch (LUT-VQ3-64 VQ3_0) ..." -ForegroundColor Cyan
-        & $git apply $Vq3Patch
-        if ($LASTEXITCODE -ne 0) { Fail "LUT-VQ3-64 patch does not apply." }
-    }
-
-    if ($Target -ne "nemotron") {
-        if (-not (Test-Path $Dsv4IpcPatch)) { Fail "Missing required patch: $Dsv4IpcPatch" }
-        Write-Host "[*] Applying patches\dsv4-ipc-hardening.patch ..." -ForegroundColor Cyan
-        & $git apply $Dsv4IpcPatch
-        if ($LASTEXITCODE -ne 0) { Fail "dsv4-ipc-hardening.patch does not apply." }
-    }
-
-    Write-Host "[*] Copying RouteCrack headers into common\ ..." -ForegroundColor Cyan
-    foreach ($h in "rc_predictor.h", "rc_stockfish.h", "rc_trie_v2.h") {
-        Copy-Item (Join-Path $HeadersDir $h) (Join-Path $LlamaDir "common\$h") -Force
-    }
-    if ($Target -eq "nemotron") {
-        Copy-Item (Join-Path $HeadersDir "ngram-map.cpp") (Join-Path $LlamaDir "common\ngram-map.cpp") -Force
-    }
-
-    # --- Windows / MSVC portability fixes ------------------------------------
-    # 1) ops.cpp reads a Linux /dev/shm block; both dsv4-ipc-hardening.patch and
-    #    zen5-nemotron-256k-optimizations.patch guard POSIX headers under #if defined(__linux__),
-    #    so only apply fallback guards if an older unguarded patch is in the tree.
-    Write-Host "[*] Verifying Windows portability guards in ops.cpp ..." -ForegroundColor Cyan
-    $ops = Join-Path $LlamaDir "ggml\src\ggml-cpu\ops.cpp"
-    $c = Get-Content -LiteralPath $ops -Raw
-    if ($c -notmatch '#if defined\(__linux__\)\r?\n#include <sys/mman\.h>') {
-        $c = $c -replace '(?ms)(#include <sys/mman\.h>.*?#include <unistd\.h>)', "#if defined(__linux__)`r`n`$1`r`n#endif"
-    }
-    if ($c -match 'open\("/dev/shm/llama_modchip\.bin"') {
-        $c = $c -replace '(?ms)^(        int fd = open\("/dev/shm/llama_modchip\.bin", O_RDONLY\);.*?^        \})',
-                          "#if defined(__linux__)`r`n`$1`r`n#endif"
-    }
-    Set-Content -LiteralPath $ops -Value $c -Encoding UTF8 -NoNewline
-
-    # 2) quants.c: MSVC has no __builtin_ctz
-    $q = Join-Path $LlamaDir "ggml\src\ggml-cpu\arch\x86\quants.c"
-    $c = Get-Content -LiteralPath $q -Raw
-    if ($c -notmatch 'mc_ctz32') {
-        $c = $c.Replace("#define UNUSED GGML_UNUSED",
-"#define UNUSED GGML_UNUSED
-
-// MSVC has no __builtin_ctz
-#if defined(_MSC_VER)
-#include <intrin.h>
-static inline int mc_ctz32(unsigned int v) {
-    unsigned long idx = 0;
-    _BitScanForward(&idx, v);
-    return (int) idx;
-}
-#else
-#define mc_ctz32(v) __builtin_ctz(v)
-#endif
-")
-        $c = $c.Replace('__builtin_ctz(m)', 'mc_ctz32(m)')
-        Set-Content -LiteralPath $q -Value $c -Encoding UTF8 -NoNewline
-    }
-
-    # 3) ggml-cpu.c: __thread / __attribute__((aligned)) are GCC-only
-    $gc = Join-Path $LlamaDir "ggml\src\ggml-cpu\ggml-cpu.c"
-    $lines = [System.Collections.Generic.List[string]](Get-Content -LiteralPath $gc)
-    if (-not ($lines -join "`n").Contains("MC_TLS")) {
-        $idx = -1
-        for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^#define GGML_CACHE_ALIGN __attribute__') { $idx = $i; break } }
-        if ($idx -ge 0) {
-            $end = $idx + 1
-            while ($lines[$end] -notmatch '^#endif') { $end++ }
-            $lines.InsertRange($end + 1, [string[]]@(
-                '',
-                '// MSVC-compatible counterparts for the modchip additions',
-                '#if defined(_WIN32)',
-                '#include <io.h>',
-                '#ifndef F_OK',
-                '#define F_OK 0',
-                '#endif',
-                '#endif',
-                '#if defined(_MSC_VER)',
-                '#define MC_TLS __declspec(thread)',
-                '#else',
-                '#define MC_TLS __thread',
-                '#endif'
-            ))
-        }
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match 'static __thread ') { $lines[$i] = $lines[$i].Replace('static __thread ', 'static MC_TLS ') }
-            if ($lines[$i] -match 's_q8_cache_buf\[GGML_Q8_CACHE_SLOTS\]' -and $lines[$i] -match '__attribute__') {
-                $lines[$i] = $lines[$i].Replace(
-                    'static uint8_t s_q8_cache_buf[GGML_Q8_CACHE_SLOTS][GGML_Q8_CACHE_SIZE] __attribute__((aligned(64)));',
-                    '#if defined(_MSC_VER)' + "`r`n" +
-                    '__declspec(align(64)) static uint8_t s_q8_cache_buf[GGML_Q8_CACHE_SLOTS][GGML_Q8_CACHE_SIZE];' + "`r`n" +
-                    '#else' + "`r`n" +
-                    'static uint8_t s_q8_cache_buf[GGML_Q8_CACHE_SLOTS][GGML_Q8_CACHE_SIZE] __attribute__((aligned(64)));' + "`r`n" +
-                    '#endif')
-            }
-        }
-        Set-Content -LiteralPath $gc -Value $lines -Encoding UTF8
-    }
-
-    # 4) llama-graph.cpp: patch references a C global from C++ code
-    $lg = Join-Path $LlamaDir "src\llama-graph.cpp"
-    $c = Get-Content -LiteralPath $lg -Raw
-    if ($c -notmatch 'extern "C" int ggml_dsv4_skip_csa_comp') {
-        $c = $c.Replace(
-            '        extern int ggml_dsv4_skip_csa_comp;',
-"#if defined(_MSC_VER)
-        extern `"C`" int ggml_dsv4_skip_csa_comp;
-#else
-        extern int ggml_dsv4_skip_csa_comp;
-#endif
-")
-        Set-Content -LiteralPath $lg -Value $c -Encoding UTF8 -NoNewline
-    }
 
     if ($Clean -and (Test-Path $BuildDir)) { Remove-Item $BuildDir -Recurse -Force }
 
@@ -210,34 +84,14 @@ static inline int mc_ctz32(unsigned int v) {
         }
         if (-not $cudaRoot) { Fail "CUDA Toolkit not found (winget install Nvidia.CUDA)." }
 
-        # Auto-detect AVX-512 support on the host CPU unless explicitly overridden so AVX2 PCs (Intel 12th-15th Gen, Zen 2/3)
-        # never crash with STATUS_ILLEGAL_INSTRUCTION when building -Cuda with MSVC (/arch:AVX512).
-        $useAvx512 = $false
-        if ($EnableAvx512) {
-            $useAvx512 = $true
-        } elseif (-not $DisableAvx512) {
-            try {
-                if (-not ("ModchipCpuCheck" -as [type])) {
-                    Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class ModchipCpuCheck {
-    [DllImport("kernel32.dll")]
-    public static extern bool IsProcessorFeaturePresent(uint feature);
-}
-"@
-                }
-                # PF_AVX512F_INSTRUCTIONS_AVAILABLE = 49 on Windows 10/11
-                $useAvx512 = [ModchipCpuCheck]::IsProcessorFeaturePresent(49)
-            } catch {
-                $useAvx512 = $false
-            }
-        }
+        # Note: IsProcessorFeaturePresent(49) only tests AVX512F (true on Skylake-X/Cascade Lake which lack VBMI).
+        # Default MSVC+CUDA CPU fallback to portable AVX2+FMA+F16C unless -EnableAvx512 is explicitly requested on Zen 4/5 or Ice Lake+.
+        $useAvx512 = ($EnableAvx512 -and (-not $DisableAvx512))
         $isaFlags = if ($useAvx512) {
-            Write-Host "[*] Host CPU supports AVX-512 — enabling MSVC AVX-512 + VBMI + VNNI kernels (pass -DisableAvx512 for portable AVX2)." -ForegroundColor Green
+            Write-Host "[*] -EnableAvx512 requested — enabling MSVC AVX-512 + VBMI + VNNI kernels (AMD Zen 4/5 or Intel Ice Lake+)." -ForegroundColor Green
             "-DGGML_AVX512=ON -DGGML_AVX512_VBMI=ON -DGGML_AVX512_VNNI=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
         } else {
-            Write-Host "[*] Building MSVC CPU kernels for AVX2 + FMA + F16C (safe on Intel 12th-15th Gen & AMD Zen 2/3; pass -EnableAvx512 to force AVX-512)." -ForegroundColor Yellow
+            Write-Host "[*] Building MSVC CPU kernels for AVX2 + FMA + F16C (safe on all modern x86_64 CPUs; pass -EnableAvx512 on Zen 4/5 or Ice Lake+)." -ForegroundColor Yellow
             "-DGGML_AVX512=OFF -DGGML_AVX512_VBMI=OFF -DGGML_AVX512_VNNI=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
         }
 
@@ -247,13 +101,17 @@ set "PATH=$cudaRoot\bin;%PATH%"
 cd /d "$LlamaDir"
 cmake -B "$BuildDir" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$Arch -DGGML_NATIVE=OFF $isaFlags -DGGML_OPENMP=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF "-DCMAKE_EXE_LINKER_FLAGS=/STACK:16777216"
 if errorlevel 1 exit /b 1
-cmake --build "$BuildDir" -j $jobs --target llama-server llama-cli llama-bench
+cmake --build "$BuildDir" -j $jobs --target llama-server llama-cli llama-bench llama-perplexity llama-quantize
 "@
-        $bat = Join-Path $env:TEMP "mcwin_build_cuda.bat"
-        Set-Content -LiteralPath $bat -Value $cmd -Encoding ASCII
-        Write-Host "[*] Building with MSVC + CUDA sm_$Arch ..." -ForegroundColor Cyan
-        & cmd /c $bat
-        if ($LASTEXITCODE -ne 0) { Fail "CUDA build failed." }
+        $bat = Join-Path $env:TEMP ("mcwin_build_cuda_" + [System.IO.Path]::GetRandomFileName() + ".bat")
+        try {
+            Set-Content -LiteralPath $bat -Value $cmd -Encoding ASCII
+            Write-Host "[*] Building with MSVC + CUDA sm_$Arch ..." -ForegroundColor Cyan
+            & cmd /c $bat
+            if ($LASTEXITCODE -ne 0) { Fail "CUDA build failed." }
+        } finally {
+            Remove-Item -LiteralPath $bat -Force -ErrorAction SilentlyContinue
+        }
     } else {
         $cmake = (Get-Command cmake.exe -ErrorAction SilentlyContinue).Source
         $ninja = (Get-Command ninja.exe -ErrorAction SilentlyContinue).Source
@@ -273,12 +131,12 @@ cmake --build "$BuildDir" -j $jobs --target llama-server llama-cli llama-bench
             "-DCMAKE_CXX_FLAGS=$winFlags"
         if ($LASTEXITCODE -ne 0) { Fail "cmake configure failed." }
         Write-Host "[*] Building (a few minutes) ..." -ForegroundColor Cyan
-        & cmake --build $BuildDir -j $jobs --target llama-server llama-cli llama-bench
+        & cmake --build $BuildDir -j $jobs --target llama-server llama-cli llama-bench llama-perplexity llama-quantize
         if ($LASTEXITCODE -ne 0) { Fail "Build failed." }
     }
 
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-    foreach ($b in "llama-server.exe", "llama-cli.exe", "llama-bench.exe") {
+    foreach ($b in "llama-server.exe", "llama-cli.exe", "llama-bench.exe", "llama-perplexity.exe", "llama-quantize.exe") {
         $p = Join-Path $BuildDir "bin\$b"
         if (Test-Path $p) { Copy-Item $p $OutDir -Force }
     }

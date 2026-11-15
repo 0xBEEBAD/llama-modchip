@@ -46,7 +46,8 @@ function Find-Server {
     } else {
         @(
             (Join-Path $ModBinDir "llama-server.exe"),
-                (Join-Path $BinDir "llama-server.exe")
+            (Join-Path $CudaBinDir "llama-server.exe"),
+            (Join-Path $BinDir "llama-server.exe")
         )
     }
     foreach ($c in $candidates) {
@@ -147,7 +148,7 @@ $isNemotron = $modelInfo.Name -match '(?i)nemotron'
 $modelAlias = if ($isNemotron) { "nemotron-3.5-30b-a3b" } else { "deepseek-v4-flash" }
 $kvTypeV    = if ($isNemotron -and $KvType -eq "q8_0") { "q4_0" } else { $KvType }
 
-Write-Head ("llama-modchip v2.5.4 -- {0} (Fractal-64 / VQ3-64) on Windows" -f $(if ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
+Write-Head ("llama-modchip v3.0 -- {0} (FRACTAL_64 / VQ3_64) on Windows" -f $(if ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
 
 if ($Threads -le 0) { $Threads = [math]::Max(1, $hw.PhysCores) }
 
@@ -166,7 +167,7 @@ if ($modelInfo.Name -match "-00001-of-(\d+)\.gguf$") {
 $totalGB = [math]::Round($totalBytes / 1GB, 2)
 
 Write-Host ("  Engine    : {0}" -f $exe)
-Write-Host ("  Patched   : {0}" -f $(if ($patched) { "yes (Q2_0 Fractal-64 + VQ3_0 LUT-VQ3-64 + MoE pruning)" } else { "NO - stock build will reject Q2_0 (42) / VQ3_0 (43) tensors" }))
+Write-Host ("  Patched   : {0}" -f $(if ($patched) { "yes (FRACTAL_64=44 + VQ3_64=45 + MoE pruning)" } else { "NO - stock build cannot read FRACTAL_64 (44) / VQ3_64 (45) tensors" }))
 Write-Host ("  Model     : {0}" -f $modelInfo.Name)
 Write-Host ("  Model size: {0} GB total ({1} shards)" -f $totalGB, $shards.Count)
 Write-Host ("  CPU       : {0} ({1} physical cores / {2} threads)" -f $hw.CpuName, $hw.PhysCores, $hw.LogCores)
@@ -175,7 +176,7 @@ Write-Host ("  RAM       : {0} GB total, {1} GB free" -f $hw.RamTotalGB, $hw.Ram
 
 if (-not $patched) {
     Write-Host ""
-    Write-Host "  [!] This is the stock llama.cpp build: it cannot read Q2_0 (42) or VQ3_0 (43) tensors." -ForegroundColor Yellow
+    Write-Host "  [!] This is the stock llama.cpp build: it cannot read FRACTAL_64 (44) or VQ3_64 (45) tensors." -ForegroundColor Yellow
     Write-Host "      Run: powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1" -ForegroundColor Yellow
     Write-Host "      or pass -Server <path to patched llama-server.exe>." -ForegroundColor Yellow
 }
@@ -224,7 +225,6 @@ $srvArgs = @(
 )
 if ($isNemotron) {
     $srvArgs += @("--ctx-checkpoints", "64", "--checkpoint-min-step", "128")
-    if ($MoeTopK -lt 6) { $env:LLAMA_MOE_TOP_K = "$MoeTopK" }
 } else {
     # Anti-loop sampling for ultra-low-bpw 284B builds.
     # Do NOT set --dry-sequence-breaker none: with no breakers DRY penalises tokens that repeat
@@ -251,8 +251,8 @@ if (-not $NoSpec) {
 }
 
 # Hybrid GPU + CPU split.
-# Q2_0 (fractal) tensors only have patched CPU kernels; the CUDA/Vulkan copy of Q2_0 expects the
-# old 18-byte block, so those tensors are pinned to the CPU even when layers are offloaded.
+# FRACTAL_64 (44) and VQ3_64 (45) tensors execute on CPU kernels on Windows/CUDA; pin those
+# tensors to CPU explicitly when offloading standard ggml layers to GPU.
 $totalLayers = 43          # deepseek4.block_count of DeepSeek-V4-Flash
 $moeBytesPerLayerMB = 1390 # gate_exps + up_exps + down_exps of one layer ~1.39 GB
 $gpuDenseMB = 1800         # embeddings + output + dense/attention parts of all layers
@@ -264,7 +264,7 @@ if ($NGpuLayers -gt 0) {
         $NCpuMoe = $totalLayers - [int]$moeOnGpu
     }
     $srvArgs += @("-ngl", "$NGpuLayers", "--n-cpu-moe", "$NCpuMoe")
-    $srvArgs += @("-ot", "blk\.\d+\.(attn_.*|indexer.*|ffn_(gate|up)_shexp)\.weight=CPU")
+    $srvArgs += @("-ot", "blk\.\d+\.(attn_.*|indexer.*|ffn_(gate|up|down)_shexp)\.weight=CPU")
 }
 
 if ($Bench) {
@@ -280,10 +280,10 @@ Write-Host ("  Context   : {0} tokens (KV {1}, flash-attn)" -f $Ctx, $KvType)
 Write-Host ("  MoE Top-K : {0} of 6 routed experts (min weight {1})" -f $MoeTopK, $MoeMinW)
 Write-Host ("  Spec      : {0}" -f $(if ($NoSpec) { "off" } else { "n-gram simple (n=4, m=7)" }))
 if ($cfgPath) { Write-Host ("  Live cfg  : {0}" -f $cfgPath) }
-Write-Host ("  Offload   : {0}" -f $(if ($NGpuLayers -gt 0) { "-ngl $NGpuLayers, --n-cpu-moe $NCpuMoe (Q2_0 attention pinned to CPU)" } else { "CPU only" }))
+Write-Host ("  Offload   : {0}" -f $(if ($NGpuLayers -gt 0) { "-ngl $NGpuLayers, --n-cpu-moe $NCpuMoe (FRACTAL_64/VQ3_64 pinned to CPU)" } else { "CPU only" }))
 if ($NGpuLayers -gt 0) {
     Write-Host "  [!] Measured on this machine: hybrid is SLOWER for this model (2.7-3.4 tok/s vs 7.4-8.1" -ForegroundColor Yellow
-    Write-Host "      CPU-only). The Q2_0 fractal attention has no GPU kernel, so every layer round-trips PCIe." -ForegroundColor Yellow
+    Write-Host "      CPU-only). FRACTAL_64/VQ3_64 tensors run on CPU, so every layer round-trips PCIe." -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host ("  -> Web chat UI : http://127.0.0.1:{0}" -f $Port) -ForegroundColor Yellow

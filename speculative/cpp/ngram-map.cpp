@@ -244,11 +244,15 @@ struct RouteCrackNemotronEngine {
         int max_d = std::min(len, 10);
         for (int d = 3; d <= max_d; ++d) {
             int start = len - d;
+            if (pred.trie.used + (uint32_t)d >= pred.trie.capacity) {
+                pred.trie.evict(std::max<uint32_t>(pred.trie.capacity / 10, (uint32_t)d));
+            }
             RCTrieNode * cursor = pred.trie.root_ptr;
             for (int j = start; j < len; ++j) {
                 auto it = cursor->children.find(ctx[j]);
                 if (it == cursor->children.end()) {
                     RCTrieNode * child = pred.trie.alloc_node_ptr(ctx[j], cursor);
+                    if (!child) break;
                     cursor->children[ctx[j]] = child;
                     child->freq = 1;
                     cursor = child;
@@ -406,15 +410,6 @@ static RouteCrackNemotronEngine & get_rc_engine() {
     return eng;
 }
 
-// Pre-initialize RouteCrack tables at library load time so the first request pays zero disk I/O
-struct RCPreheater {
-    RCPreheater() {
-        auto & eng = get_rc_engine();
-        std::lock_guard<std::mutex> lock(eng.mtx);
-        eng.init_once();
-    }
-};
-static RCPreheater g_rc_preheater;
 
 } // anonymous namespace
 
@@ -828,13 +823,19 @@ static void common_ngram_update_key_stats(
     const uint16_t size_value = map.size_value;
     const size_t   key_idx    = key.key_idx;
 
-    for (size_t idx = key.stat_idx + 1; idx < inp.size() - size_key - size_value; ++idx) {
+    if (inp.size() <= (size_t) size_key + size_value) {
+        key.stat_idx = 0;
+        return;
+    }
+
+    const size_t idx_limit = inp.size() - size_key - size_value;
+    for (size_t idx = key.stat_idx + 1; idx < idx_limit; ++idx) {
         if (common_ngram_compare(inp, key_idx, idx, size_key)) {
             ++key.key_num;
             common_ngram_Insert_value(key, inp, idx + size_key, size_value);
         }
     }
-    key.stat_idx = inp.size() - size_key - size_value - 1;
+    key.stat_idx = idx_limit - 1;
 }
 
 static void common_ngram_update_keys_KeyMap(common_ngram_map & map, const llama_tokens & inp) {
@@ -916,10 +917,16 @@ static bool compare_key_with_sampled(
 
 void common_ngram_map_begin(common_ngram_map & map, const llama_tokens & inp) {
     const size_t size_CheckBegin = 100;
+    const size_t prefix_cmp = std::min({size_CheckBegin, inp.size(), map.tokens_last_begin.size()});
+    bool prefix_changed = false;
+    for (size_t i = 0; i < prefix_cmp; ++i) {
+        if (inp[i] != map.tokens_last_begin[i]) {
+            prefix_changed = true;
+            break;
+        }
+    }
 
-    if ((inp.size() < map.size_last_begin) ||
-        (map.size_last_begin >= size_CheckBegin &&
-         !common_ngram_compare(inp, 0, 0, size_CheckBegin))) {
+    if ((inp.size() < map.size_last_begin) || prefix_changed) {
         map.keys.clear();
         map.idx_last_check = 0;
         if (!map.key_map.empty()) {
@@ -928,6 +935,8 @@ void common_ngram_map_begin(common_ngram_map & map, const llama_tokens & inp) {
         }
     }
     map.size_last_begin = inp.size();
+    const size_t save_len = std::min(size_CheckBegin, inp.size());
+    map.tokens_last_begin.assign(inp.begin(), inp.begin() + save_len);
 
     if (!map.key_map.empty()) {
         common_ngram_update_keys_KeyMap(map, inp);

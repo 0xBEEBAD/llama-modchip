@@ -1,24 +1,18 @@
 #!/usr/bin/env bash
-# build_zen5_llama.sh — Build llama.cpp with 256K Hybrid SWA + Fractal-64 (AVX-512 / AVX2 / ARM64 SDOT / Metal) + RouteCrack Engine
+# build_zen5_llama.sh — Build Unified llama-modchip v3.0 Engine
+# Base commit : ggml-org/llama.cpp de32b268c4ad55d45f3b7b16c029f4e077f4ba74
+# Patch       : patches/llama-modchip-v3.0.patch
+# Architectures: Qwen3.8-Flash-Next (qwen4exp), DeepSeek-V4 (deepseek4), Nemotron-3.5 (nemotron_h_moe), Qwen3.5-MoE
+# Custom Types : GGML_TYPE_FRACTAL_64 = 44 (30 B/64, CPU + Metal GPU), GGML_TYPE_VQ3_64 = 45 (24 B/64, CPU)
+#                (Upstream GGML_TYPE_Q2_0 = 42 and GGML_TYPE_F8_E4M3 = 43 remain 100% untouched)
 set -euo pipefail
 
 LLAMA_DIR="${1:-./llama.cpp}"
 BUILD_DIR="${BUILD_DIR:-${LLAMA_DIR}/build}"
-LLAMA_COMMIT="d2f83055d6e3b379b5d34c4837122a918cf402c2"
+LLAMA_COMMIT="de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-TARGET_MODEL="${TARGET_MODEL:-nemotron}"
-if [[ "$TARGET_MODEL" == "dsv4" || "$TARGET_MODEL" == "deepseek" ]]; then
-    PATCH_FILE="${REPO_ROOT}/patches/deepseek-v4-flash-fractal-256k.patch"
-    DSV4_IPC_PATCH="${REPO_ROOT}/patches/dsv4-ipc-hardening.patch"
-    SERIES_DIR="${REPO_ROOT}/patches/apple-silicon"
-else
-    PATCH_FILE="${REPO_ROOT}/patches/zen5-nemotron-256k-optimizations.patch"
-    DSV4_IPC_PATCH=""
-    SERIES_DIR="${REPO_ROOT}/patches/nemotron-apple-silicon"
-fi
-VQ3_PATCH="${REPO_ROOT}/patches/lut-vq3-64-avx512-vbmi.patch"
-SPEC_CPP_DIR="${REPO_ROOT}/speculative/cpp"
+PATCH_FILE="${REPO_ROOT}/patches/llama-modchip-v3.0.patch"
 OS_NAME="$(uname -s)"
 ARCH_NAME="$(uname -m)"
 NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)"
@@ -29,6 +23,23 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
     fi
 fi
 
+if [[ ! -f "$PATCH_FILE" ]]; then
+    echo "[!] ERROR: Unified patch missing at $PATCH_FILE" >&2
+    exit 1
+fi
+
+reset_tree() {
+    git -C "$LLAMA_DIR" checkout HEAD -- .
+    rm -f \
+        "$LLAMA_DIR/ggml/src/vq3_codebook.h" \
+        "$LLAMA_DIR/common/rc_predictor.h" \
+        "$LLAMA_DIR/common/rc_stockfish.h" \
+        "$LLAMA_DIR/common/rc_trie_v2.h"
+    while read -r created_file; do
+        [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
+    done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
+}
+
 if [[ ! -d "$LLAMA_DIR" ]]; then
     echo "[*] Cloning llama.cpp into $LLAMA_DIR..."
     git clone https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
@@ -37,164 +48,47 @@ else
     CUR_COMMIT="$(git -C "$LLAMA_DIR" rev-parse HEAD 2>/dev/null || true)"
     if [[ "$CUR_COMMIT" != "$LLAMA_COMMIT" ]]; then
         echo "[*] Existing $LLAMA_DIR is at ${CUR_COMMIT:-unknown}; checking out pinned commit $LLAMA_COMMIT..."
+        reset_tree || true
         git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_COMMIT"
         git -C "$LLAMA_DIR" checkout "$LLAMA_COMMIT"
     fi
 fi
 
-# Patches stacked on top of PATCH_FILE (Q2_0 Metal decode kernel, gguf-py block size, Q2_0 tests). They are applied on
-# macOS by default and left out elsewhere, so a Linux/zen5 source tree is the same as before; APPLE_SILICON_PATCHES=1
-# applies them on any OS, =0 never.
-APPLE_SILICON_PATCHES="${APPLE_SILICON_PATCHES:-auto}"
-if [[ "$APPLE_SILICON_PATCHES" == "auto" ]]; then
-    if [[ "$OS_NAME" == "Darwin" ]]; then APPLE_SILICON_PATCHES=1; else APPLE_SILICON_PATCHES=0; fi
-elif [[ "$APPLE_SILICON_PATCHES" != "0" && "$APPLE_SILICON_PATCHES" != "1" ]]; then
-    echo "[!] ERROR: Invalid APPLE_SILICON_PATCHES='$APPLE_SILICON_PATCHES'. Use 'auto', '0', or '1'." >&2
-    exit 1
-fi
-SERIES_PATCHES=()
-if [[ "$APPLE_SILICON_PATCHES" == "1" ]]; then
-    shopt -s nullglob
-    SERIES_PATCHES=("${SERIES_DIR}"/[0-9][0-9][0-9][0-9]-*.patch)
-    shopt -u nullglob
+if [[ "${RESET_LLAMA_TREE:-0}" == "1" ]]; then
+    echo "[*] RESET_LLAMA_TREE=1: resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT..."
+    reset_tree
 fi
 
-# The stacked patches change lines the base patch added, so once they are applied PATCH_FILE can no longer be checked on
-# its own. Count the series patches that reverse-apply: all of them means PATCH_FILE and the series are in the tree; some
-# of them means an interrupted run: the script stops, or resets the tree to the pinned commit if RESET_LLAMA_TREE=1.
-SERIES_APPLIED=0
-if [[ ${#SERIES_PATCHES[@]} -gt 0 ]]; then
-    N_SERIES_IN_TREE=0
-    for p in "${SERIES_PATCHES[@]}"; do
-        if git -C "$LLAMA_DIR" apply --reverse --check "$p" 2>/dev/null; then
-            N_SERIES_IN_TREE=$((N_SERIES_IN_TREE + 1))
-        fi
-    done
-    if [[ "$N_SERIES_IN_TREE" -eq "${#SERIES_PATCHES[@]}" ]]; then
-        SERIES_APPLIED=1
-    elif [[ "$N_SERIES_IN_TREE" -gt 0 ]]; then
-        # A partly applied series must not be built, and the script cannot tell the patches' changes from the user's own
-        # edits, so it only resets the tree when asked to.
-        if [[ "${RESET_LLAMA_TREE:-0}" == "1" ]]; then
-            echo "[*] Only $N_SERIES_IN_TREE of ${#SERIES_PATCHES[@]} patches from $(basename "$SERIES_DIR")/ are in $LLAMA_DIR; RESET_LLAMA_TREE=1: resetting its working tree to clean $LLAMA_COMMIT (uncommitted changes are discarded)..."
-            git -C "$LLAMA_DIR" checkout HEAD -- .
-            rm -f "$LLAMA_DIR/ggml/src/vq3_codebook.h"
-            while read -r created_file; do
-                [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
-            done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
-        else
-            echo "[!] ERROR: Only $N_SERIES_IN_TREE of ${#SERIES_PATCHES[@]} patches from $(basename "$SERIES_DIR")/ are in $LLAMA_DIR (an interrupted run?)." >&2
-            echo "[!] Nothing was changed. To discard the uncommitted changes in $LLAMA_DIR and apply everything again, run:" >&2
-            echo "[!]   RESET_LLAMA_TREE=1 $0 $LLAMA_DIR     (or: git -C $LLAMA_DIR checkout -- .  and run again)" >&2
-            exit 1
-        fi
-    fi
-fi
-
-VQ3_ALREADY_APPLIED=0
-if [[ -f "$VQ3_PATCH" ]] && git -C "$LLAMA_DIR" apply --reverse --check "$VQ3_PATCH" 2>/dev/null; then
-    VQ3_ALREADY_APPLIED=1
-fi
-IPC_ALREADY_APPLIED=0
-if [[ -n "$DSV4_IPC_PATCH" && -f "$DSV4_IPC_PATCH" ]] && git -C "$LLAMA_DIR" apply --reverse --check "$DSV4_IPC_PATCH" 2>/dev/null; then
-    IPC_ALREADY_APPLIED=1
-fi
-
-# Detect pre-v2.5.5 DeepSeek-V4 trees missing ConeCollapse per-layer n_ff_exp_i / ffn_down_exps_b or still holding legacy /tmp IPC
-if [[ "$TARGET_MODEL" == "dsv4" || "$TARGET_MODEL" == "deepseek" ]] && [[ -f "$LLAMA_DIR/src/models/deepseek4.cpp" ]]; then
-    if ! grep -q "ffn_down_exps_b" "$LLAMA_DIR/src/models/deepseek4.cpp" 2>/dev/null || grep -q "dsv4_moe_cfg.bin" "$LLAMA_DIR/src/models/deepseek4.cpp" 2>/dev/null; then
-        echo "[*] Detected pre-v2.5.5 deepseek4.cpp in $LLAMA_DIR — resetting tree to apply v2.5.5 ConeCollapse & security patches..."
-        SERIES_APPLIED=0
-        VQ3_ALREADY_APPLIED=0
-        IPC_ALREADY_APPLIED=0
-        git -C "$LLAMA_DIR" checkout HEAD -- .
-        rm -f "$LLAMA_DIR/ggml/src/vq3_codebook.h"
-        while read -r created_file; do
-            [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
-        done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
-    fi
-fi
-
-echo "[*] Applying 256K Hybrid SWA + Fractal-64 SIMD/Metal + L3 NTA + 2MB HugePages patch ($(basename "$PATCH_FILE"))..."
-if [[ "$SERIES_APPLIED" == "1" || "$VQ3_ALREADY_APPLIED" == "1" || "$IPC_ALREADY_APPLIED" == "1" ]]; then
-    echo "[i] Base patch and stacked patches already applied cleanly in $LLAMA_DIR."
-elif git -C "$LLAMA_DIR" apply --reverse --check "$PATCH_FILE" 2>/dev/null; then
-    echo "[i] Patch already applied cleanly in $LLAMA_DIR."
+echo "[*] Applying unified llama-modchip v3.0 patch ($(basename "$PATCH_FILE"))..."
+if git -C "$LLAMA_DIR" apply --reverse --check "$PATCH_FILE" 2>/dev/null; then
+    echo "[i] llama-modchip-v3.0.patch already applied cleanly in $LLAMA_DIR."
 elif git -C "$LLAMA_DIR" apply --check "$PATCH_FILE" 2>/dev/null; then
     git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-    echo "[+] Kernel & KV patches applied cleanly."
+    echo "[+] llama-modchip-v3.0.patch applied cleanly."
 else
-    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying updated patch..."
-    git -C "$LLAMA_DIR" checkout HEAD -- .
-    rm -f "$LLAMA_DIR/ggml/src/vq3_codebook.h"
-    while read -r created_file; do
-        [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
-    done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
+    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying llama-modchip-v3.0.patch..."
+    reset_tree
     if git -C "$LLAMA_DIR" apply --check "$PATCH_FILE"; then
         git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-        echo "[+] Updated kernel & KV patches applied cleanly."
+        echo "[+] llama-modchip-v3.0.patch applied cleanly."
     else
         echo "[!] ERROR: Failed to apply $PATCH_FILE onto $LLAMA_DIR (expected commit $LLAMA_COMMIT)." >&2
         exit 1
     fi
 fi
 
-echo "[*] Installing native RouteCrack + Stockfish-PVS C++ speculative engine into $LLAMA_DIR/common/..."
-cp -f "${SPEC_CPP_DIR}/rc_predictor.h" "$LLAMA_DIR/common/"
-cp -f "${SPEC_CPP_DIR}/rc_trie_v2.h" "$LLAMA_DIR/common/"
-cp -f "${SPEC_CPP_DIR}/rc_stockfish.h" "$LLAMA_DIR/common/"
-if [[ "$TARGET_MODEL" != "dsv4" && "$TARGET_MODEL" != "deepseek" ]]; then
-    cp -f "${SPEC_CPP_DIR}/ngram-map.cpp" "$LLAMA_DIR/common/"
+SHARED_LIBS_DEFAULT="ON"
+if [[ "${PORTABLE_STATIC:-0}" == "1" ]]; then
+    SHARED_LIBS_DEFAULT="OFF"
 fi
-
-if [[ "$SERIES_APPLIED" != "1" && ${#SERIES_PATCHES[@]} -gt 0 ]]; then
-    echo "[*] Applying patches/$(basename "$SERIES_DIR")/ (Apple Silicon ARM64 NEON + Metal Q2_0 kernels)..."
-    for p in "${SERIES_PATCHES[@]}"; do
-        if git -C "$LLAMA_DIR" apply --check "$p"; then
-            git -C "$LLAMA_DIR" apply "$p"
-            echo "[+] Applied $(basename "$p")"
-        else
-            echo "[!] ERROR: Failed to apply $p onto $LLAMA_DIR." >&2
-            echo "[!] $LLAMA_DIR has local changes in the files this patch touches; use a fresh clone of llama.cpp at $LLAMA_COMMIT." >&2
-            exit 1
-        fi
-    done
-fi
-
-if [[ -f "$VQ3_PATCH" ]]; then
-    if [[ "$VQ3_ALREADY_APPLIED" == "1" ]] || git -C "$LLAMA_DIR" apply --reverse --check "$VQ3_PATCH" 2>/dev/null; then
-        echo "[i] LUT-VQ3-64 (VQ3_0) patch already applied in $LLAMA_DIR."
-    elif git -C "$LLAMA_DIR" apply --check "$VQ3_PATCH" 2>/dev/null; then
-        git -C "$LLAMA_DIR" apply "$VQ3_PATCH"
-        echo "[+] Applied patches/lut-vq3-64-avx512-vbmi.patch (GGML_TYPE_VQ3_0 = 43 + vq3_codebook.h)."
-    else
-        echo "[!] ERROR: Failed to apply $VQ3_PATCH onto $LLAMA_DIR." >&2
-        exit 1
-    fi
-fi
-
-if [[ -n "$DSV4_IPC_PATCH" && -f "$DSV4_IPC_PATCH" ]]; then
-    if [[ "$IPC_ALREADY_APPLIED" == "1" ]] || git -C "$LLAMA_DIR" apply --reverse --check "$DSV4_IPC_PATCH" 2>/dev/null; then
-        echo "[i] DSV4 IPC hardening patch already applied in $LLAMA_DIR."
-    elif git -C "$LLAMA_DIR" apply --check "$DSV4_IPC_PATCH" 2>/dev/null; then
-        git -C "$LLAMA_DIR" apply "$DSV4_IPC_PATCH"
-        echo "[+] Applied patches/dsv4-ipc-hardening.patch (per-UID SHM + opt-in 0600 MoE config)."
-    elif [[ "${PORTABLE_STATIC:-0}" == "1" ]]; then
-        echo "[!] ERROR: Failed to apply $DSV4_IPC_PATCH onto $LLAMA_DIR during portable build." >&2
-        exit 1
-    else
-        echo "[!] WARNING: Could not apply $(basename "$DSV4_IPC_PATCH") cleanly (local edits in $(basename "$PATCH_FILE")?); continuing." >&2
-    fi
-fi
-
-CMAKE_ISA_ARGS=(-DGGML_NATIVE="${GGML_NATIVE:-ON}" -DBUILD_SHARED_LIBS=ON)
+CMAKE_ISA_ARGS=(-DGGML_NATIVE="${GGML_NATIVE:-ON}" -DBUILD_SHARED_LIBS="${BUILD_SHARED_LIBS:-${SHARED_LIBS_DEFAULT}}")
 
 if [[ "$OS_NAME" == "Darwin" ]]; then
     METAL_OPT="${GGML_METAL:-ON}"
     OPENMP_OPT="${GGML_OPENMP:-OFF}"
     BLAS_OPT="${GGML_BLAS:-ON}"
     if [[ "$ARCH_NAME" == "arm64" ]]; then
-        echo "[*] Detected macOS Apple Silicon (arm64) — enabling ARM64 NEON SDOT 1x{8,4,3,2} Fractal-64 + Metal=${METAL_OPT} + BLAS=${BLAS_OPT}..."
+        echo "[*] Detected macOS Apple Silicon (arm64) — enabling ARM64 NEON SDOT 1x{8,4,3,2} (FRACTAL_64 + VQ3_64) + Metal=${METAL_OPT} (FRACTAL_64 native GPU) + BLAS=${BLAS_OPT}..."
     else
         echo "[*] Detected macOS ($ARCH_NAME) — Metal=${METAL_OPT}, BLAS=${BLAS_OPT}..."
     fi
@@ -206,10 +100,9 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
     )
 elif [[ "$ARCH_NAME" == "aarch64" || "$ARCH_NAME" == "arm64" ]]; then
     OPENMP_OPT="${GGML_OPENMP:-ON}"
-    echo "[*] Detected Linux ARM64 ($ARCH_NAME) — enabling ARMv8 NEON SDOT 1x{8,4,3,2} Fractal-64 kernels..."
+    echo "[*] Detected Linux ARM64 ($ARCH_NAME) — enabling ARMv8 NEON SDOT 1x{8,4,3,2} (FRACTAL_64 + VQ3_64)..."
     CMAKE_ISA_ARGS+=(-DGGML_OPENMP="${OPENMP_OPT}")
 else
-    # Auto-detect x86_64 CPU SIMD ISA extensions so both Zen 4/5 (AVX-512) and Zen 2/3 / Intel (AVX2) build safely
     CPU_FLAGS=""
     if [[ -r /proc/cpuinfo ]]; then
         CPU_FLAGS="$(grep -m1 -E '^flags' /proc/cpuinfo || true)"
@@ -221,6 +114,7 @@ else
     if [[ "${PORTABLE_STATIC:-0}" == "1" ]]; then
         PORTABLE_LINK_ARGS=(
             -DLLAMA_OPENSSL=OFF
+            -DLLAMA_CURL=OFF
             -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
         )
     fi
@@ -229,7 +123,7 @@ else
         echo "[*] Building portable x86-64-v3 (Haswell+: AVX2 + FMA + F16C + BMI2, zero AVX-512 instructions)..."
         CMAKE_ISA_ARGS=(
             -DGGML_NATIVE=OFF
-            -DBUILD_SHARED_LIBS="${BUILD_SHARED_LIBS:-ON}"
+            -DBUILD_SHARED_LIBS="${BUILD_SHARED_LIBS:-${SHARED_LIBS_DEFAULT}}"
             -DGGML_OPENMP="${OPENMP_OPT}"
             -DGGML_AVX512=OFF
             -DGGML_AVX512_VBMI=OFF
@@ -248,7 +142,7 @@ else
         echo "[*] Building portable x86-64-v4 + AVX-512 VBMI/VNNI (Zen 4/5 & Ice Lake+, zero AVX512-BF16)..."
         CMAKE_ISA_ARGS=(
             -DGGML_NATIVE=OFF
-            -DBUILD_SHARED_LIBS="${BUILD_SHARED_LIBS:-ON}"
+            -DBUILD_SHARED_LIBS="${BUILD_SHARED_LIBS:-${SHARED_LIBS_DEFAULT}}"
             -DGGML_OPENMP="${OPENMP_OPT}"
             -DGGML_AVX512=ON
             -DGGML_AVX512_VBMI=ON
@@ -303,11 +197,10 @@ CMAKE_ISA_ARGS+=(
     -DGGML_CUDA="${CUDA_OPT}"
 )
 
-# BUILD_TESTS=1 (default off) also builds test-quantize-fns and test-backend-ops
 BUILD_TARGETS=(llama-server llama-cli llama-quantize llama-bench llama-perplexity)
 if [[ "${BUILD_TESTS:-0}" == "1" ]]; then
     CMAKE_ISA_ARGS+=(-DLLAMA_BUILD_TESTS=ON)
-    BUILD_TARGETS+=(test-quantize-fns test-backend-ops)
+    BUILD_TARGETS+=(test-quantize-fns test-backend-ops test-llama-archs)
 fi
 
 echo "[*] Configuring CMake build in ${BUILD_DIR}..."

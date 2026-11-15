@@ -928,23 +928,41 @@ struct RCLogitProbe {
     bool     ready;
 
     bool load(const char* path) {
+        destroy();
         FILE* f = fopen(path, "rb");
         if (!f) return false;
-        uint32_t header[3];
-        fread(header, 4, 3, f);
+        uint32_t header[3] = {0, 0, 0};
+        if (fread(header, 4, 3, f) != 3) {
+            fclose(f);
+            return false;
+        }
+        if (header[0] == 0 || header[0] > 512 || header[1] == 0 || header[1] > 65536) {
+            fclose(f);
+            return false;
+        }
         n_hot = (int)header[0];
         n_feat = (int)header[1];
+        const size_t w_elems = (size_t)n_hot * (size_t)n_feat;
 
-        hot_ids = (int32_t*)malloc(n_hot * sizeof(int32_t));
-        feat_ids = (int32_t*)malloc(n_feat * sizeof(int32_t));
-        W = (float*)malloc(n_hot * n_feat * sizeof(float));
-        bias = (float*)malloc(n_hot * sizeof(float));
+        hot_ids = (int32_t*)malloc((size_t)n_hot * sizeof(int32_t));
+        feat_ids = (int32_t*)malloc((size_t)n_feat * sizeof(int32_t));
+        W = (float*)malloc(w_elems * sizeof(float));
+        bias = (float*)malloc((size_t)n_hot * sizeof(float));
+        if (!hot_ids || !feat_ids || !W || !bias) {
+            destroy();
+            fclose(f);
+            return false;
+        }
 
-        fread(hot_ids, 4, n_hot, f);
-        fread(feat_ids, 4, n_feat, f);
-        fread(W, 4, n_hot * n_feat, f);
-        fread(bias, 4, n_hot, f);
+        const bool ok = fread(hot_ids, 4, (size_t)n_hot, f) == (size_t)n_hot &&
+                        fread(feat_ids, 4, (size_t)n_feat, f) == (size_t)n_feat &&
+                        fread(W, 4, w_elems, f) == w_elems &&
+                        fread(bias, 4, (size_t)n_hot, f) == (size_t)n_hot;
         fclose(f);
+        if (!ok) {
+            destroy();
+            return false;
+        }
         ready = true;
         return true;
     }
@@ -976,10 +994,11 @@ struct RCLogitProbe {
         float best_score = -1e9f;
         float sum_exp = 0.0f;
         float scores[512];
+        const int nh = std::min(n_hot, 512);
 
-        for (int i = 0; i < n_hot; i++) {
+        for (int i = 0; i < nh; i++) {
             float s = bias[i];
-            const float* wi = W + i * n_feat;
+            const float* wi = W + (size_t)i * (size_t)n_feat;
             for (int j = 0; j < nf; j++)
                 s += wi[j] * feat[j];
             scores[i] = s;
@@ -992,7 +1011,7 @@ struct RCLogitProbe {
         // Softmax confidence of best
         if (out_conf && best >= 0) {
             // Numerically stable softmax
-            for (int i = 0; i < n_hot; i++)
+            for (int i = 0; i < nh; i++)
                 sum_exp += exp(scores[i] - best_score);
             *out_conf = 1.0f / sum_exp;
         }
@@ -1256,19 +1275,37 @@ struct RCPredictor {
     bool probe_collecting;
 
     bool load_probe(const char* path) {
+        if (probe_bias) { free(probe_bias); probe_bias = nullptr; }
+        if (probe_W) { free(probe_W); probe_W = nullptr; }
+        probe_ready = false;
         FILE* f = fopen(path, "rb");
         if (!f) return false;
-        uint32_t header[3];
-        fread(header, 4, 3, f);
+        uint32_t header[3] = {0, 0, 0};
+        if (fread(header, 4, 3, f) != 3) { fclose(f); return false; }
+        if (header[0] == 0 || header[0] > (uint32_t)PROBE_MAX || header[1] == 0 || header[1] > 65536) {
+            fclose(f);
+            return false;
+        }
         probe_n = (int)header[0];
         probe_embd = (int)header[1];
-        if (probe_n > PROBE_MAX || probe_embd <= 0) { fclose(f); return false; }
-        fread(probe_tokens, 4, probe_n, f);
-        probe_bias = (float*)malloc(probe_n * sizeof(float));
-        fread(probe_bias, 4, probe_n, f);
-        probe_W = (float*)malloc(probe_n * probe_embd * sizeof(float));
-        fread(probe_W, 4, probe_n * probe_embd, f);
+        const size_t w_elems = (size_t)probe_n * (size_t)probe_embd;
+        probe_bias = (float*)malloc((size_t)probe_n * sizeof(float));
+        probe_W = (float*)malloc(w_elems * sizeof(float));
+        if (!probe_bias || !probe_W) {
+            free(probe_bias); probe_bias = nullptr;
+            free(probe_W); probe_W = nullptr;
+            fclose(f);
+            return false;
+        }
+        const bool ok = fread(probe_tokens, 4, (size_t)probe_n, f) == (size_t)probe_n &&
+                        fread(probe_bias, 4, (size_t)probe_n, f) == (size_t)probe_n &&
+                        fread(probe_W, 4, w_elems, f) == w_elems;
         fclose(f);
+        if (!ok) {
+            free(probe_bias); probe_bias = nullptr;
+            free(probe_W); probe_W = nullptr;
+            return false;
+        }
         probe_ready = true;
         return true;
     }
