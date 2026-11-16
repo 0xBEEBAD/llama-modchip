@@ -961,7 +961,7 @@ else
     export RC_TABLES_DIR="/nonexistent"
 fi
 
-# Non-convoy thread fallback if DECODE_THREADS was not set above: $((N_CORES - 1)) clamped to >= 1
+# Non-convoy thread fallback if DECODE_THREADS was not set above: \$((N_CORES - 1)) clamped to >= 1
 if [[ -z "\${DECODE_THREADS:-}" ]]; then
     if [[ "\${N_CORES:-1}" -gt 1 ]]; then
         DECODE_THREADS=\$((N_CORES - 1))

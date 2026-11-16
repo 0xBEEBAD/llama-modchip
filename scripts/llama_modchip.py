@@ -279,16 +279,39 @@ def inspect_gguf(path: str) -> GGUFModelInfo:
     head_count = _scalar_or_max_pos_int(meta.get(f"{arch}.attention.head_count", 32), 32)
 
     kv_heads_raw = meta.get(f"{arch}.attention.head_count_kv", head_count)
-    if isinstance(kv_heads_raw, list):
+    rec_raw = meta.get(f"{arch}.attention.recurrent_layers")
+    fa_interval = _scalar_or_mean_pos_int(meta.get(f"{arch}.full_attention_interval", 0), 0)
+
+    if isinstance(rec_raw, list) and len(rec_raw) > 0:
+        rec_slice = rec_raw[:trunk_blocks] if trunk_blocks > 0 else rec_raw
+        ssm_layers = sum(1 for x in rec_slice if bool(x))
+        attn_layers = max(0, len(rec_slice) - ssm_layers)
+        if isinstance(kv_heads_raw, list):
+            kv_slice = kv_heads_raw[: len(rec_slice)]
+            total_kv_heads = sum(
+                int(kv_slice[i])
+                for i in range(len(kv_slice))
+                if not bool(rec_slice[i]) and int(kv_slice[i]) > 0
+            )
+        else:
+            total_kv_heads = attn_layers * int(kv_heads_raw)
+        has_ssm = ssm_layers > 0 or any(k.startswith(f"{arch}.ssm.") for k in meta.keys()) or arch == "qwen4exp"
+    elif isinstance(kv_heads_raw, list):
         kv_slice = kv_heads_raw[:trunk_blocks] if trunk_blocks > 0 else kv_heads_raw
         attn_layers = sum(1 for x in kv_slice if int(x) > 0)
         total_kv_heads = sum(int(x) for x in kv_slice if int(x) > 0)
+        has_ssm = any(k.startswith(f"{arch}.ssm.") for k in meta.keys()) or arch == "qwen4exp"
+        ssm_layers = max(0, trunk_blocks - attn_layers) if has_ssm else 0
+    elif fa_interval > 1 and trunk_blocks > 0:
+        attn_layers = trunk_blocks // fa_interval
+        ssm_layers = max(0, trunk_blocks - attn_layers)
+        total_kv_heads = attn_layers * int(kv_heads_raw)
+        has_ssm = ssm_layers > 0
     else:
         attn_layers = trunk_blocks
         total_kv_heads = trunk_blocks * int(kv_heads_raw)
-
-    has_ssm = any(k.startswith(f"{arch}.ssm.") for k in meta.keys()) or arch == "qwen4exp"
-    ssm_layers = max(0, trunk_blocks - attn_layers) if has_ssm else 0
+        has_ssm = any(k.startswith(f"{arch}.ssm.") for k in meta.keys()) or arch == "qwen4exp"
+        ssm_layers = max(0, trunk_blocks - attn_layers) if has_ssm else 0
 
     default_head_dim = embedding_length // max(head_count, 1)
     key_length = _scalar_or_max_pos_int(meta.get(f"{arch}.attention.key_length", default_head_dim), default_head_dim)
@@ -572,20 +595,22 @@ def _build_hacks_list(
         swa_val = f"LOCKED (Native MLA Compressed KV on all {model.attn_layers} layers)"
         swa_reason = "DeepSeek-V4 MLA uses latent KV + Lightning Indexer; SWA windowing is locked off."
     elif model.is_hybrid_ssm:
+        ssm_kind = "GDN" if model.arch == "qwen4exp" else "Mamba-2"
+        attn_kind = "QSA" if model.arch == "qwen4exp" else "GQA"
         swa_enabled = attn_window > 0
         if not swa_enabled:
             swa_safety = "SAFE"
-            swa_val = f"OFF — WIN=0 (Full Exact Global Attention on all {model.attn_layers} GQA layers; [SPACE] -> WIN=4096)"
+            swa_val = f"OFF — WIN=0 (Full Exact Global Attention on all {model.attn_layers} {attn_kind} layers; [SPACE] -> WIN=4096)"
             swa_reason = (
-                f"Hybrid SSM ({model.ssm_layers} Mamba-2 + {model.attn_layers} GQA): "
-                f"exact 256K attention; toggle ON for WIN=4096 L3-resident SWA."
+                f"Hybrid {ssm_kind} ({model.ssm_layers} {ssm_kind} + {model.attn_layers} {attn_kind}): "
+                f"exact global attention; toggle ON for WIN=4096 L3-resident SWA."
             )
         else:
             swa_safety = "APPROXIMATE"
-            swa_val = f"ON — WIN={attn_window}, SINKS={attn_sinks}, STRIDE=1 (All {model.attn_layers} GQA layers)"
+            swa_val = f"ON — WIN={attn_window}, SINKS={attn_sinks}, STRIDE=1 (All {model.attn_layers} {attn_kind} layers)"
             swa_reason = (
-                f"Approximate beyond {attn_window}t window: {model.ssm_layers} Mamba-2 layers hold global state, "
-                f"while {model.attn_layers} GQA layers attend to {attn_sinks} sinks + last {attn_window} tokens."
+                f"Approximate beyond {attn_window}t window: {model.ssm_layers} {ssm_kind} layers hold global state, "
+                f"while {model.attn_layers} {attn_kind} layers attend to {attn_sinks} sinks + last {attn_window} tokens."
             )
     else:
         global_layers = model.attn_layers // max(swa_stride, 1)
@@ -608,8 +633,9 @@ def _build_hacks_list(
 
     # RouteCrack status
     if model.is_hybrid_ssm:
+        ssm_rc_label = "GDN" if model.arch == "qwen4exp" else "Mamba-2"
         rc_mode = "Strict Zero-Rollback (84/92/96)"
-        rc_reason = "Mamba-2 state rollback costs ~4.3ms + cold MoE DRAM fetches -> requires >=85.9% precision."
+        rc_reason = f"{ssm_rc_label} state rollback costs ~4.3ms + cold MoE DRAM fetches -> requires >=85.9% precision."
     elif model.is_moe:
         rc_mode = "CPU-MoE High-Precision (80/90/95)"
         rc_reason = "Each rejected draft token fetches cold MoE experts from DDR5 -> low gates (60/70/80) hurt tok/s!"
