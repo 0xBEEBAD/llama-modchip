@@ -336,7 +336,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  [16 GB RAM TIER]"
         echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.0 CPU-Turbo]"
         echo "     Default 16GB CPU-Turbo (AVX-512 VBMI VQ3_64=45 + FRACTAL_64=44 · 24.2–60.4 t/s)"
-        echo "  7) NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB        [30B MoE · ~13.3 GiB · 100% std ggml]"
+        echo "  7) NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB        [30B MoE · 13.39 GiB · 100% std ggml]"
         echo "     Universal 16GB (100% standard ggml — CPU, Apple Metal, CUDA & LM Studio)"
         echo "  8) NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3  [30B MoE · 13.30 GiB · v3.0 Opt-In]"
         echo "     [OPT-IN UNCENSORED] 16GB v3.0 VQ3-64 (refusal removed)"
@@ -480,17 +480,17 @@ else
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf")
             MODEL_SHARD_SIZES=(14282559040)
-            MODEL_SHARD_SHA256S=()
+            MODEL_SHARD_SHA256S=("04a460cdd831002d80b2f47ec5d70e7a92227abcf0a57f31ad73fe0bd50e711f")
             ;;
         7|nemotron-maxq-16gb|nemotron-16gb|NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB)
             MODEL_PRESET="nemotron-maxq-16gb"
             MODEL_FAMILY="nemotron"
-            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B · ~13.3 GiB · 100% standard ggml)"
+            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B · 13.39 GiB · 100% standard ggml)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB-GGUF"
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf")
-            MODEL_SHARD_SIZES=()
-            MODEL_SHARD_SHA256S=()
+            MODEL_SHARD_SIZES=(14382336640)
+            MODEL_SHARD_SHA256S=("26b884d70a52046a7198c4e01cac397af8bf44584b04cdcf59f896145587db67")
             ;;
         8|nemotron-ablit|nemotron-abliterated|NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64)
             MODEL_PRESET="nemotron-ablit"
@@ -501,60 +501,32 @@ else
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf")
             MODEL_SHARD_SIZES=(14282559488)
-            MODEL_SHARD_SHA256S=()
+            MODEL_SHARD_SHA256S=("75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2af53e57")
             ;;
-        # Legacy v2.5.x presets (kept for backward compatibility; note Fractal/VQ3 v2.5 commits used legacy type IDs unless migrated)
-        dsv4-maxq-fractal)
-            MODEL_PRESET="dsv4-maxq-fractal"
+        # Legacy v2.5.4 DeepSeek-V4 presets used pre-v3.0 custom tensor type IDs (42/43); redirect cleanly to dsv4-maxq (100% standard ggml)
+        dsv4-maxq-fractal|dsv4-vq3|dsv4-fractal|dsv4-ablit|dsv4-abliterated)
+            LEGACY_DSV4_PRESET="$MODEL_PRESET"
+            echo "[!] NOTICE: Legacy v2.5.4 preset '${LEGACY_DSV4_PRESET}' used retired custom tensor type IDs (42/43) that require llama-modchip v2.5.4."
+            echo "    Redirecting cleanly to v3.0 '--preset dsv4-maxq' (DeepSeek-V4-Flash-0731-MaxQ-v4 · 57.99 GiB · 100% standard ggml)."
+            if [[ "$LEGACY_DSV4_PRESET" == *ablit* ]]; then
+                echo "    (Tip: For 64 GB opt-in uncensored v3.0 deployment, pass '--preset qwen38-64gb-ablit'.)"
+            fi
+            MODEL_PRESET="dsv4-maxq"
             MODEL_FAMILY="dsv4"
-            MODEL_LABEL="DeepSeek-V4-Flash-0731-MaxQ-Fractal (284B · 56.93 GiB · Legacy)"
-            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF"
-            MODEL_REV="main"
-            MODEL_SUBDIR="dsv4-maxq-fractal"
+            MODEL_LABEL="DeepSeek-V4-Flash-0731-MaxQ-v4 (284B · 57.99 GiB · 3 shards)"
+            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF"
+            MODEL_REV="48356a120e78c01e82f425a74380f46f3925fb9c"
+            MODEL_SUBDIR="dsv4-maxq-v4"
             MODEL_SHARDS=(
-                "DeepSeek-V4-Flash-0731-MaxQ-Fractal-00001-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-MaxQ-Fractal-00002-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-MaxQ-Fractal-00003-of-00003.gguf"
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00002-of-00003.gguf"
+                "DeepSeek-V4-Flash-0731-MaxQ-v4-00003-of-00003.gguf"
             )
-            ;;
-        dsv4-vq3)
-            MODEL_PRESET="dsv4-vq3"
-            MODEL_FAMILY="dsv4"
-            MODEL_LABEL="DeepSeek-V4-Flash-0731-VQ3 (284B · 56.40 GiB · Legacy)"
-            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-VQ3-64GB-CPU-GGUF"
-            MODEL_REV="main"
-            MODEL_SUBDIR="dsv4-vq3"
-            MODEL_SHARDS=(
-                "DeepSeek-V4-Flash-0731-VQ3-00001-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-VQ3-00002-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-VQ3-00003-of-00003.gguf"
-            )
-            ;;
-        dsv4-fractal)
-            MODEL_PRESET="dsv4-fractal"
-            MODEL_FAMILY="dsv4"
-            MODEL_LABEL="DeepSeek-V4-Flash-0731-Fractal (284B · 56.57 GiB · Legacy)"
-            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-Fractal-64GB-CPU-GGUF"
-            MODEL_REV="main"
-            MODEL_SUBDIR="dsv4-fractal"
-            MODEL_SHARDS=(
-                "DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-Fractal-00002-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-Fractal-00003-of-00003.gguf"
-            )
-            ;;
-        dsv4-ablit|dsv4-abliterated)
-            MODEL_PRESET="dsv4-ablit"
-            MODEL_FAMILY="dsv4"
-            IS_ABLITERATED=1
-            MODEL_LABEL="DeepSeek-V4-Flash-0731-Abliterated-Fractal (284B · 56.93 GiB · Legacy)"
-            MODEL_REPO="Synchopate/DeepSeek-V4-Flash-0731-Abliterated-Fractal-64GB-CPU-GGUF"
-            MODEL_REV="main"
-            MODEL_SUBDIR="dsv4-abliterated-fractal"
-            MODEL_SHARDS=(
-                "DeepSeek-V4-Flash-0731-Abliterated-Fractal-00001-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-Abliterated-Fractal-00002-of-00003.gguf"
-                "DeepSeek-V4-Flash-0731-Abliterated-Fractal-00003-of-00003.gguf"
+            MODEL_SHARD_SIZES=(5258336 35543586816 26721192096)
+            MODEL_SHARD_SHA256S=(
+                "6112e887b21d1fdf7b7196232b528698a6ec2d5a59760a040cb4231f8e8d691b"
+                "5d85c740992b70395da5c3e4a856b3fad6ef725271722c8d837b35befe28330d"
+                "a8654d4d5fedf748d6f2b6404a8b7f9e19435a8aa8e2bb97ce9a66bc012c0f3a"
             )
             ;;
         nemotron-fractal)
@@ -565,6 +537,7 @@ else
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf")
             MODEL_SHARD_SIZES=(15420034624)
+            MODEL_SHARD_SHA256S=("3a3a09eac29b5906397ca6a93d2ff0f566fca0bdd365294d067aeb5d0ebf4a1b")
             ;;
         nemotron-q4)
             MODEL_PRESET="nemotron-q4"

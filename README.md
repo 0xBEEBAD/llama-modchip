@@ -40,7 +40,7 @@ One unified `llama-modchip v3.0` binary (`GLIBC <= 2.30`, static `libstdc++` & `
 | **`64 GB` Tier**<br/>*(Flagship Default)* | **[`Qwen3.8-Flash-Next-MaxQ-64GB`](https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF)**<br/>*(`--preset qwen38-64gb` · opt-in [`qwen38-64gb-ablit`](https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-GGUF), `+0.18%` ΔPPL)* | **`53.99 GiB`** (`57,969,748,352 B`)<br/>*(`43.26` Trunk + `10.73` PLE)* | **`45.08 GiB`**<br/>*(`RssAnon = 1.81 GiB`)* | **`72.0 t/s` `pp512`**<br/>**`12.66 t/s` `tg128`** *(`93.0%` MTP)* | **100% Standard `ggml`** (`types <= 42`: CPU, Metal, CUDA, Vulkan; `v3.0` loader) |
 | **`64 GB` Tier**<br/>*(`284B` Alternative)* | **[`DeepSeek-V4-Flash-0731-MaxQ-v4`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF)**<br/>*(`--preset dsv4-maxq` · `284.3B` Total / `13.2B` Active)* | **`57.99 GiB`** (`62,270,037,248 B`)<br/>*(`3` shards, `34L` ConeCollapse)* | **`58.6–59.1 GiB`**<br/>*(anonymous heap)* | **`36.1–44.4 t/s` `pp`**<br/>**`8.8–19.2+ t/s` `tg`** *(`ngram-simple`)* | **100% Standard `ggml`** (`0` custom types: CPU, Metal `27.0 t/s` M5 Max, CUDA, Vulkan) |
 | **`32 GB` Tier**<br/>*(Consumer Default)* | **[`Qwen3.8-Flash-Next-MaxQ-32GB`](https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-GGUF)**<br/>*(`--preset qwen38-32gb` · opt-in [`qwen38-32gb-ablit`](https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-GGUF), `+0.32%` ΔPPL)* | **`35.71 GiB`** (`38,341,683,424 B`)<br/>*(`24.98` RAM + `10.73` lazy NVMe PLE)* | **`26.91–28.40 GiB <= 28.5 GiB`**<br/>*(Cgroup v2 `Swap=0` PASS)* | **`74.6 t/s` `pp512`**<br/>**`11.45–14.29 t/s` `tg128`** *(`draft-mtp`)* | **100% Standard `ggml`** (`types <= 42`: CPU + NVMe `mmap` demand-paged PLE) |
-| **`16 GB` Tier**<br/>*(CPU-Turbo / GPU)* | **[`Nemotron-3.5-30B-A3B-VQ3-64`](https://huggingface.co/Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64-CPU-GGUF)** *(`v3.0`)*<br/>**[`Nemotron-3.5-30B-A3B-MaxQ-16GB`](https://huggingface.co/Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB-GGUF)** *(Std `ggml`)*<br/>*(opt-in `nemotron-ablit`)* | **`13.30 GiB`**<br/>*(`1` file, `256K` Mamba-2+MoE)* | **`14.6–16.0 GiB`**<br/>*(`432 MB` KV @ `256K`)* | **`241–307 t/s` `pp512`**<br/>**`24.2–60.4 t/s` `tg`** *(`111.6` Threadripper)* | `VQ3-64`: `v3.0` (`types 44/45`)<br/>`MaxQ-16GB`: **100% Upstream `ggml`** (`llama.cpp`, Metal, CUDA, LM Studio) |
+| **`16 GB` Tier**<br/>*(CPU-Turbo / GPU)* | **[`Nemotron-3.5-30B-A3B-VQ3-64`](https://huggingface.co/Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64-CPU-GGUF)** *(`v3.0` CPU-Turbo)*<br/>**[`Nemotron-3.5-30B-A3B-MaxQ-16GB`](https://huggingface.co/Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB-GGUF)** *(Std `ggml`)*<br/>*(opt-in `nemotron-ablit`)* | **`13.30 / 13.39 GiB`**<br/>*(`1` file, `256K` Mamba-2+MoE)* | **`14.30–16.0 GiB`**<br/>*(`14.30 GiB <= 15.0 GiB` cgroup)* | `VQ3-64`: **`24.2–60.4 t/s`** *(`111.6` TR)*<br/>`MaxQ-16GB`: **`188.3 pp` / `15.10 t/s` `N=1` (`27.80` refactor)** | `VQ3-64`: `v3.0` (`types 44/45`)<br/>`MaxQ-16GB`: **100% Upstream `ggml`** (`llama.cpp`, Metal, CUDA, LM Studio) |
 
 ---
 
@@ -96,7 +96,7 @@ env RC_TABLES_DIR=/nonexistent "./llama-server-modchip-linux-x86_64-${BIN_ISA}" 
 
 # 2C. [16 GB Tier] NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (v3.0 CPU-Turbo) or MaxQ-16GB (100% standard ggml):
 # ./install.sh --preset nemotron-vq3         # 13.30 GiB v3.0 CPU-Turbo (AVX-512 VBMI)
-# ./install.sh --preset nemotron-maxq-16gb   # ~13.3 GiB 100% standard ggml (CPU / Metal / CUDA / LM Studio)
+# ./install.sh --preset nemotron-maxq-16gb   # 13.39 GiB 100% standard ggml (CPU / Metal / CUDA / LM Studio)
 ```
 
 > [!IMPORTANT]
@@ -104,10 +104,10 @@ env RC_TABLES_DIR=/nonexistent "./llama-server-modchip-linux-x86_64-${BIN_ISA}" 
 > - **Non-Convoy Threading (`-t $((N_CORES - 1)) -tb $((N_CORES - 1)) --poll 0 --poll-batch 0`):** Leaving 1 core free for HTTP/OS dispatch and disabling busy-polling eliminates thread-pool barrier convoys (`+25.9%` `pp512`, `+31.3%` `tg128` over oversubscribed `-t N --poll 50`). `./modchip` configures this automatically.
 > - **Vocabulary Isolation (`RC_TABLES_DIR=/nonexistent` on Non-Nemotron Models):** When serving `Qwen3.8` (`248K` vocab) or `DeepSeek-V4` (`129K` vocab) from a working directory containing `./workspace/routecrack` Nemotron tables, always set `RC_TABLES_DIR=/nonexistent` (not merely unset) so `Stockfish-PVS v2` runs in clean online `248K` session mode. `./modchip` enforces this automatically.
 > - **Default `--repack` ON (`v3.0`) vs. Unpatched Upstream `llama.cpp`:** `llama-modchip v3.0` fixes upstream `CPU_REPACK` `q8_cache` / `repack.cpp` bugs while preserving zero-copy `mmap` on 3D MoE tensors (`RssAnon = 1.81–1.92 GiB`, `93.0%` MTP accept on `MaxQ-64GB`). Users loading `Qwen3.8` GGUFs on **unpatched upstream `llama.cpp`** should pass `--no-repack` (`-nr`); `--no-repack` is **not** needed on `llama-modchip v3.0`.
-> - **`MaxQ-32GB` Anti-Repetition Sampling & `<think>` Token Budget:** At `1.63 bpw`, `MaxQ-32GB` and `MaxQ-32GB-Abliterated` must be run with `temperature=0.6`, `top_p=0.95`, `top_k=20`, `presence_penalty=0.2`–`1.0`, `repeat_penalty=1.05` (`4 / 4 = 100%` loop-free on Blind-4 vs. greedy `temp=0` tail loops on `3 / 16` `32GB-Abliterated` and `1 / 16` `64GB-Abliterated` 512-tok dual-use outputs; `./modchip` passes these flags automatically on 32 GB presets). Whenever `enable_thinking=True` on `Qwen3.8`, set **`max_tokens >= 16384`** (or `enable_thinking=False` for `<= 4096` caps).
+> - **`MaxQ-32GB` Anti-Repetition Sampling & `<think>` Token Budgets:** At `1.63 bpw`, `MaxQ-32GB` and `MaxQ-32GB-Abliterated` must be run with `temperature=0.6`, `top_p=0.95`, `top_k=20`, `presence_penalty=0.2`–`1.0`, `repeat_penalty=1.05` (`4 / 4 = 100%` loop-free on Blind-4 vs. greedy `temp=0` tail loops on `3 / 16` `32GB-Abliterated` and `1 / 16` `64GB-Abliterated` 512-tok dual-use outputs; `./modchip` passes these flags automatically on 32 GB presets). Whenever `enable_thinking=True`, set **`max_tokens >= 16384` on `Qwen3.8`** and **`max_tokens >= 4096` on `Nemotron-3.5`** (whose default Jinja template enables `<think>...</think>` unless `enable_thinking: false` / `--reasoning-budget 0` is passed).
 
 > [!CAUTION]
-> **Responsible-Use Disclaimer & Edition Positioning (Opt-In `*-ablit` Presets):** Optional abliterated checkpoints (`qwen38-64gb-ablit`, `qwen38-32gb-ablit`, `nemotron-ablit`, `dsv4-ablit`) attenuate refusal-mediating activation subspaces via orthogonal projection (`56.25% -> 18.75%` held-out dual-use refusals at `+0.18%` ΔPPL on `qwen38-64gb-ablit`; `43.75% -> 12.50%` at `+0.32%` ΔPPL on `qwen38-32gb-ablit`; `0 / 4` `<think>` spot refusals on both under KL-safe rank-2 editing). Upstream safety refusal filters cannot be relied upon for moderation, and `./install.sh` never selects `*-ablit` presets without explicit `[y/N]` confirmation (or `--accept-abliterated` in `--yes` mode). Use **Aligned `qwen38-64gb`** as the default pure coding flagship (`4 / 4` Blind-4 pass vs. `2 / 4` on `qwen38-64gb-ablit`), and reserve `*-ablit` strictly for authorized security research, reverse engineering, red-team auditing, CTF, code auditing, and uncensored legal/policy analysis.
+> **Responsible-Use Disclaimer & Edition Positioning (Opt-In `*-ablit` Presets):** Optional abliterated checkpoints (`qwen38-64gb-ablit`, `qwen38-32gb-ablit`, `nemotron-ablit`) attenuate refusal-mediating activation subspaces via orthogonal projection (`56.25% -> 18.75%` held-out dual-use refusals at `+0.18%` ΔPPL on `qwen38-64gb-ablit`; `43.75% -> 12.50%` at `+0.32%` ΔPPL on `qwen38-32gb-ablit`; `0 / 4` `<think>` spot refusals on both under KL-safe rank-2 editing). Upstream safety refusal filters cannot be relied upon for moderation, and `./install.sh` never selects `*-ablit` presets without explicit `[y/N]` confirmation (or `--accept-abliterated` in `--yes` mode). Use **Aligned `qwen38-64gb`** as the default pure coding flagship (`4 / 4` Blind-4 pass vs. `2 / 4` on `qwen38-64gb-ablit`), and reserve `*-ablit` strictly for authorized security research, reverse engineering, red-team auditing, CTF, code auditing, and uncensored legal/policy analysis.
 
 | `./modchip` Command | Description |
 | :--- | :--- |
@@ -141,16 +141,28 @@ Evaluated on `40 x 512` blind `wiki-alt.txt` chunks (`0.000000%` 8-gram and 13-g
 - **100% Donor-Free Rank-2 Subspace-Abliterated Twins (`qwen38-64gb-ablit` & `qwen38-32gb-ablit`):** Single-pass fused rank-2 contrastive projection + `FP64 Woodbury DualGram` across `blk.4..48` (`blk.0..3` & `token_embd` spared; `0.000000%` 8/13-gram overlap across all `32/32` checks) reduces held-out dual-use security refusals **`56.25% -> 18.75%`** on `64GB` (`ΔPPL = +0.1784%`, token-weighted top-4 `tg512` MTP accept **`78.08%`**, `p512` `10.29 t/s`) and **`43.75% -> 12.50%`** on `32GB` (`ΔPPL = +0.3189%`, top-4 `tg512` MTP accept **`76.22%`**, `p512` `77.53 pp` / `11.65 t/s` mean / `12.73 t/s` cold `rep 0`), with **`0 / 4` `<think>` spot refusals** on both (vs. `2 / 4` on both Aligned checkpoints counting Unicode `I can’t` `\u2019` on `ref_01`).
 
 <details>
-<summary><b>Pinned <code>Qwen3.8-Flash-Next</code> <code>v3.0</code> GGUF <code>SHA-256</code> Checksums (`./modchip checksums`)</b></summary>
+<summary><b>Pinned <code>v3.0</code> Fleet GGUF <code>SHA-256</code> Checksums (`./modchip checksums`)</b></summary>
 <br/>
 
 ```text
+# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ (v3.0)
 f2b8bc79acb4b4d79033acd91c9c360ba96da92cd5841512befc450e15f4786f  Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf (46,449,692,736 B)
 384bc936bdad75383c03e87184056e1cb0b037b0e3f5d5ae5273fd46f55150aa  Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf (46,449,692,736 B)
 06cb65f9cf6e510cd16500ca1719701a0ffa13dcaa4c4d0cc135e4f2071a8b4d  Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf (26,821,627,808 B)
 6e8ae62c37bc08de1a69e9e78ab9bae0262f87ffe543595206d1c3b3a810fd67  Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf (26,821,627,808 B)
 86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e  Qwen3.8-Flash-Next-MaxQ-{64GB,32GB}[-Abliterated]-00002-of-00002.gguf (11,520,055,616 B)
 ef2af1d6aa8a22740c7252bc7ce40c5c2f1249aa8d9c8499a4d4572c3cfdf9df  mmproj-Qwen3.8-Flash-Next-BF16.gguf (907,542,880 B)
+
+# 64 GB Tier — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B · v3.0)
+6112e887b21d1fdf7b7196232b528698a6ec2d5a59760a040cb4231f8e8d691b  DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf (5,258,336 B)
+5d85c740992b70395da5c3e4a856b3fad6ef725271722c8d837b35befe28330d  DeepSeek-V4-Flash-0731-MaxQ-v4-00002-of-00003.gguf (35,543,586,816 B)
+a8654d4d5fedf748d6f2b6404a8b7f9e19435a8aa8e2bb97ce9a66bc012c0f3a  DeepSeek-V4-Flash-0731-MaxQ-v4-00003-of-00003.gguf (26,721,192,096 B)
+
+# 16 GB Tier — NVIDIA-Nemotron-3.5-30B-A3B (v3.0)
+26b884d70a52046a7198c4e01cac397af8bf44584b04cdcf59f896145587db67  NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf (14,382,336,640 B · 100% std ggml)
+04a460cdd831002d80b2f47ec5d70e7a92227abcf0a57f31ad73fe0bd50e711f  NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · v3.0 types 44/45)
+3a3a09eac29b5906397ca6a93d2ff0f566fca0bdd365294d067aeb5d0ebf4a1b  NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · v3.0 type 44)
+75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2af53e57  NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · v3.0 types 44/45)
 ```
 
 </details>
@@ -177,14 +189,14 @@ Measured on 16 Zen 5 cores (`taskset -c 16-31`, `mmap` enabled, default `--repac
 Full quality gate breakdowns, `ref5632.kld` 51-chunk / 49-chunk blind logs, and `BF16` SQNR tables are preserved in **[`benchmarks/QUALITY_GATE_VQ3_64.md`](benchmarks/QUALITY_GATE_VQ3_64.md)**, **[`docs/DEEPSEEK_V4_OPTIMIZATIONS.md`](docs/DEEPSEEK_V4_OPTIMIZATIONS.md)**, and **[`docs/NEMOTRON_OPTIMIZATIONS.md`](docs/NEMOTRON_OPTIMIZATIONS.md)**:
 
 - **`DeepSeek-V4-Flash-0731-MaxQ-v4` (`57.99 GiB`, `284.33B` Total / `13.17B` Active, `0` custom tensor types):** `AtomicChat wiki-alt.txt` `51`-chunk `ref5632.kld` **`Mean PPL(Q) = 6.8592 ± 0.0482`** (`6.8471` on unseen chunks `3..51`), **`Mean KLD = 0.64851 ± 0.00354 nats`**, **`Median KLD = 0.18382`**, **`Same top p = 73.283%`** (vs `PPL(base) = 4.3310`); `36.1–44.4 tok/s` prefill and `8.8–19.2+ tok/s` `Stockfish-PVS` decode on 16C Zen 5 CPU (`27.0 tok/s` `tg128` / `169.4 tok/s` `pp512` on `64 GB` Apple M5 Max Metal).
-- **`NVIDIA-Nemotron-3.5-30B-A3B` (`13.30 GiB` `VQ3-64` `v3.0` & `~13.3 GiB` `MaxQ-16GB` Standard `ggml`):** `VQ3-64` scores **`100.0 / 100.0`** on [`benchmarks/eval_quality_and_tools.py`](benchmarks/eval_quality_and_tools.py) (`WikiText-2 PPL = 7.4400` vs `BF16` `6.9582`, `0.1495 / 0.0944 nats` KLD) at **`24.18–26.08 tok/s` Served Gate** and **`40.9–60.4 tok/s` `M=7` refactor bursts** on 16C Zen 5 (`111.62 tok/s` on Threadripper PRO 7985WX, `80.8 tok/s` Vulkan Hybrid).
+- **`NVIDIA-Nemotron-3.5-30B-A3B` (`13.30 GiB` `VQ3-64` `v3.0` CPU-Turbo & `13.39 GiB` `MaxQ-16GB` 100% Standard `ggml`):** Across `40 × 512` blind `wiki-alt.txt` chunks (vs. `16.07 GiB` donor-free `MXFP4` ref `PPL = 6.596`), `Fractal-64` (`14.36 GiB`, `type 44`) achieves **`PPL = 6.653`** (`Mean KLD = 0.0688`), **`VQ3-64` (`13.30 GiB`, `types 44/45` — highest-accuracy `16 GB` CPU-Turbo flagship)** achieves **`PPL = 6.761`** (`Mean KLD = 0.0871`, `WikiText-2 PPL = 7.4400` vs `BF16` `6.9582`, **`100.0 / 100.0`** Gate at **`24.18–26.08 tok/s` Served Gate** / **`40.9–60.4 tok/s` `M=7` bursts** on 16C Zen 5, `111.62 tok/s` on Threadripper PRO 7985WX), and donor-free **`MaxQ-16GB` (`14,382,336,640 B` = `13.39 GiB`, `max_type = 42`, `0` custom types — universal stock `llama.cpp`/Metal/CUDA/LM Studio edition)** achieves **`PPL = 7.313 ± 0.192`** (`Mean KLD = 0.1722`, `Median KLD = 0.0698`, `Same top p = 83.43%`), passing strict Linux Cgroup v2 `15.0 GiB` enforcement (`MemoryMax = 15.0G`, `Swap = 0`, `VmHWM = 14.3040 GiB <= 15.0 GiB` at `-c 32768`) at **`188.29 tok/s` `pp512` / `15.10 tok/s` `tg128` pure `N=1`** and **`27.80 tok/s` (`94.44%` accept) on `MiniLRU` code refactoring** (`merge_intervals` + native OpenAI tool-call synthesis `PASS`).
 
 ---
 
 ## What Is New in `llama-modchip v3.0`
 
 1. **Zero-Collision Custom Tensor Type IDs (`44` & `45`) + Single Unified Patch ([`patches/llama-modchip-v3.0.patch`](patches/llama-modchip-v3.0.patch)):**
-   - Upstream `GGML_TYPE_Q2_0 = 42` (`18 B / 32 W`, used by `Qwen3.8` signed-scale `Q2_0` and `Nemotron MaxQ-16GB`) and `GGML_TYPE_F8_E4M3 = 43` remain **100% untouched**.
+   - Upstream `GGML_TYPE_Q2_0 = 42` (`18 B / 64 W` = `2.25 bpw`, `QK2_0 = 64`, used by `Qwen3.8` signed-scale `Q2_0` and `Nemotron MaxQ-16GB`) and `GGML_TYPE_F8_E4M3 = 43` remain **100% untouched**.
    - `Fractal-64` (`30 B / 64 W = 3.75 bpw`) moves cleanly to `GGML_TYPE_FRACTAL_64 = 44` (CPU AVX-512/AVX2/NEON + Apple Metal GPU) and `LUT-VQ3-64` (`24 B / 64 W = 3.00 bpw`, 128-entry 3D spherical codebook in `ggml/src/vq3_codebook.h`) moves to `GGML_TYPE_VQ3_64 = 45` (AVX-512 VBMI `VPERMI2B` + AVX2/NEON/scalar).
    - One binary (`de32b268c` + `llama-modchip-v3.0.patch`) natively runs `qwen4exp`, `deepseek4`, `nemotron_h_moe`, and `qwen35moe`.
 2. **512-Bit `Q1_0`/`Q2_0`/`MXFP4` SIMD Kernels, Multi-Threaded `GATED_DELTA_NET` & Zero-Copy 3D MoE `--repack`:**
