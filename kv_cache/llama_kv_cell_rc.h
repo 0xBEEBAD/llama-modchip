@@ -7,9 +7,16 @@
  * (which instead uses native `--cache-type-k q8_0 --cache-type-v q4_0` + `_MM_HINT_NTA` L3 isolation).
  */
 
+#ifdef __cplusplus
 #include <cstdint>
 #include <cstddef>
+#else
+#include <stdint.h>
+#include <stddef.h>
+#endif
+#if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
