@@ -13,7 +13,7 @@ Group=llama
 # Verify your CPU's non-SMT physical core IDs via: python3 scripts/check_cpu_readiness.py
 CPUAffinity=0-15
 
-# Runtime Environment Variables (verified against patches/zen5-nemotron-256k-optimizations.patch):
+# Runtime Environment Variables (verified against patches/llama-modchip-v3.0.patch):
 # - LLAMA_MOE_TOP_K=4           : Norm-preserving active-expert pruning override (reduces Nemotron 3.5
 #                                 routed experts from 6 -> 4, and Qwen3-30B-A3B from 8 -> 4; surviving
 #                                 4 gates are automatically renormalized via expert_weights_norm=True).

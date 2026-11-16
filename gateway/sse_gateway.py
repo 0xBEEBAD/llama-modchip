@@ -1153,7 +1153,7 @@ WEB_UI_HTML = """<!DOCTYPE html>
 <body>
 <header>
   <div class="brand">
-    <span>♟️ llama-modchip v2.5.3</span>
+    <span>♟️ llama-modchip v3.0</span>
     <span class="badge" id="status-badge">CONNECTING...</span>
   </div>
   <div style="font-family: var(--font-mono); font-size: 12px; color: var(--muted);" id="cpu-banner">

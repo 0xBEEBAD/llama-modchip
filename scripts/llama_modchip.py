@@ -180,6 +180,8 @@ class GGUFModelInfo:
     expert_weights_norm: bool
     expert_weights_scale: float
     effective_expert_units: int
+    has_mtp: bool = False
+    ple_dim: int = 0
 
     @property
     def is_hybrid_ssm(self) -> bool:
@@ -190,12 +192,42 @@ class GGUFModelInfo:
         return self.expert_count > 1 and self.expert_used_count > 0
 
     @property
+    def is_qwen38_32gb(self) -> bool:
+        low = self.filename.lower()
+        return self.arch == "qwen4exp" and ("32gb" in low or self.file_size_gib < 45.0)
+
+    @property
     def arch_summary(self) -> str:
-        kind = f"Hybrid SSM+GQA ({self.ssm_layers} SSM + {self.attn_layers} GQA)" if self.is_hybrid_ssm else f"Pure GQA ({self.attn_layers}L)"
+        if self.arch == "qwen4exp":
+            mtp_tag = "+MTP" if self.has_mtp else ""
+            ple_tag = f"+PLE(d={self.ple_dim})" if self.ple_dim > 0 else ""
+            kind = f"Hybrid GDN+QSA ({self.ssm_layers} GDN + {self.attn_layers} QSA{mtp_tag}{ple_tag})"
+        elif self.is_hybrid_ssm:
+            kind = f"Hybrid SSM+GQA ({self.ssm_layers} SSM + {self.attn_layers} GQA)"
+        else:
+            kind = f"Pure GQA ({self.attn_layers}L)"
         if self.is_moe:
             shared_str = f"+{self.expert_shared_count}s" if self.expert_shared_count else ""
             return f"{kind} | MoE {self.expert_used_count}{shared_str}/{self.expert_count}"
         return f"{kind} | Dense"
+
+
+def _scalar_or_mean_pos_int(raw: Any, default: int = 0) -> int:
+    if isinstance(raw, list):
+        pos = [int(x) for x in raw if isinstance(x, (int, float)) and int(x) > 0]
+        return int(round(sum(pos) / len(pos))) if pos else default
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    return default
+
+
+def _scalar_or_max_pos_int(raw: Any, default: int = 0) -> int:
+    if isinstance(raw, list):
+        pos = [int(x) for x in raw if isinstance(x, (int, float)) and int(x) > 0]
+        return max(pos) if pos else default
+    if isinstance(raw, (int, float)) and int(raw) > 0:
+        return int(raw)
+    return default
 
 
 def inspect_gguf(path: str) -> GGUFModelInfo:
@@ -208,6 +240,7 @@ def inspect_gguf(path: str) -> GGUFModelInfo:
         if all(os.path.isfile(sp) for sp in shard_paths):
             file_size = sum(os.path.getsize(sp) for sp in shard_paths)
     meta: Dict[str, Any] = {}
+    has_blk48_mtp_tensor = False
     with open(path, "rb") as f:
         magic = f.read(4)
         if magic != b"GGUF":
@@ -220,59 +253,80 @@ def inspect_gguf(path: str) -> GGUFModelInfo:
             val = _read_gguf_val(f, vtype)
             if not key.startswith("tokenizer."):
                 meta[key] = val
+        # Quickly scan tensor names in Shard 1 for built-in NextN MTP layer (e.g. blk.48.nextn.*)
+        if meta.get("general.architecture") == "qwen4exp" and n_tensors <= 4096:
+            try:
+                for _ in range(n_tensors):
+                    tlen = struct.unpack("<Q", f.read(8))[0]
+                    tname = f.read(tlen).decode("utf-8", errors="replace")
+                    if ".nextn." in tname or tname.startswith("blk.48."):
+                        has_blk48_mtp_tensor = True
+                    ndims = struct.unpack("<I", f.read(4))[0]
+                    f.seek(8 * ndims + 4 + 8, os.SEEK_CUR)
+            except Exception:
+                pass
 
     arch = str(meta.get("general.architecture", "unknown"))
     name = str(meta.get("general.name", os.path.basename(path)))
-    block_count = int(meta.get(f"{arch}.block_count", 0))
-    context_length = int(meta.get(f"{arch}.context_length", 4096))
-    embedding_length = int(meta.get(f"{arch}.embedding_length", 4096))
-    head_count_raw = meta.get(f"{arch}.attention.head_count", 32)
-    head_count = int(head_count_raw[0] if isinstance(head_count_raw, list) else head_count_raw)
+    block_count = _scalar_or_mean_pos_int(meta.get(f"{arch}.block_count", 0), 0)
+    nextn_layers = _scalar_or_mean_pos_int(meta.get(f"{arch}.nextn_predict_layers", 0), 0)
+    has_mtp = bool(nextn_layers > 0 or has_blk48_mtp_tensor or (arch == "qwen4exp" and block_count >= 49))
+    trunk_blocks = (block_count - 1) if (arch == "qwen4exp" and has_mtp and block_count >= 49) else block_count
+    ple_dim = _scalar_or_mean_pos_int(meta.get(f"{arch}.embedding_length_per_layer_input", 0), 0)
+
+    context_length = _scalar_or_mean_pos_int(meta.get(f"{arch}.context_length", 4096), 4096)
+    embedding_length = _scalar_or_mean_pos_int(meta.get(f"{arch}.embedding_length", 4096), 4096)
+    head_count = _scalar_or_max_pos_int(meta.get(f"{arch}.attention.head_count", 32), 32)
 
     kv_heads_raw = meta.get(f"{arch}.attention.head_count_kv", head_count)
     if isinstance(kv_heads_raw, list):
-        attn_layers = sum(1 for x in kv_heads_raw if int(x) > 0)
-        total_kv_heads = sum(int(x) for x in kv_heads_raw if int(x) > 0)
+        kv_slice = kv_heads_raw[:trunk_blocks] if trunk_blocks > 0 else kv_heads_raw
+        attn_layers = sum(1 for x in kv_slice if int(x) > 0)
+        total_kv_heads = sum(int(x) for x in kv_slice if int(x) > 0)
     else:
-        attn_layers = block_count
-        total_kv_heads = block_count * int(kv_heads_raw)
+        attn_layers = trunk_blocks
+        total_kv_heads = trunk_blocks * int(kv_heads_raw)
 
-    has_ssm = any(k.startswith(f"{arch}.ssm.") for k in meta.keys())
-    ssm_layers = (block_count - attn_layers) if has_ssm else 0
+    has_ssm = any(k.startswith(f"{arch}.ssm.") for k in meta.keys()) or arch == "qwen4exp"
+    ssm_layers = max(0, trunk_blocks - attn_layers) if has_ssm else 0
 
     default_head_dim = embedding_length // max(head_count, 1)
-    key_length = int(meta.get(f"{arch}.attention.key_length", default_head_dim))
-    value_length = int(meta.get(f"{arch}.attention.value_length", default_head_dim))
+    key_length = _scalar_or_max_pos_int(meta.get(f"{arch}.attention.key_length", default_head_dim), default_head_dim)
+    value_length = _scalar_or_max_pos_int(meta.get(f"{arch}.attention.value_length", default_head_dim), default_head_dim)
 
     # Bytes per token across all attention layers:
     if arch == "deepseek4":
-        kv_lora = int(meta.get(f"{arch}.attention.kv_lora_rank", 512))
-        qk_rope = int(meta.get(f"{arch}.attention.key_length_mla", 64))
+        kv_lora = _scalar_or_mean_pos_int(meta.get(f"{arch}.attention.kv_lora_rank", 512), 512)
+        qk_rope = _scalar_or_mean_pos_int(meta.get(f"{arch}.attention.key_length_mla", 64), 64)
         mla_dim = kv_lora + qk_rope
         kv_bytes_fp16 = 2 * mla_dim * attn_layers
         # DeepSeek-V4 MLA requires matching K/V cache types (Q8_0/Q8_0 default: ~1.0625 B/elem)
         kv_bytes_q8q4 = int(round(1.0625 * mla_dim * attn_layers))
+    elif arch == "qwen4exp":
+        kv_bytes_fp16 = 2 * (key_length + value_length) * total_kv_heads
+        # Qwen3.8 QSA uses symmetric Q8_0/Q8_0 KV cache (~1.0625 B/elem)
+        kv_bytes_q8q4 = int(round(1.0625 * (key_length + value_length) * total_kv_heads))
     else:
         # FP16: 2 bytes * (K_dim + V_dim) * total_kv_heads
         kv_bytes_fp16 = 2 * (key_length + value_length) * total_kv_heads
         # Asymmetric Q8_0 (K: ~1.0625 B/elem) + Q4_0 (V: ~0.5625 B/elem)
         kv_bytes_q8q4 = int(round((1.0625 * key_length + 0.5625 * value_length) * total_kv_heads))
 
-    expert_count = int(meta.get(f"{arch}.expert_count", 0))
-    expert_used_count = int(meta.get(f"{arch}.expert_used_count", 0))
-    expert_shared_count = int(meta.get(f"{arch}.expert_shared_count", 0))
-    expert_ffn_nominal = int(meta.get(f"{arch}.expert_feed_forward_length", 0))
+    expert_count = _scalar_or_mean_pos_int(meta.get(f"{arch}.expert_count", 0), 0)
+    expert_used_count = _scalar_or_mean_pos_int(meta.get(f"{arch}.expert_used_count", 0), 0)
+    expert_shared_count = _scalar_or_mean_pos_int(meta.get(f"{arch}.expert_shared_count", 0), 0)
+    expert_ffn_nominal = _scalar_or_mean_pos_int(meta.get(f"{arch}.expert_feed_forward_length", 0), 0)
     expert_ffn_list = meta.get(f"{arch}.expert_feed_forward_lengths")
     if isinstance(expert_ffn_list, list) and len(expert_ffn_list) > 0:
-        expert_ffn = int(round(sum(int(x) for x in expert_ffn_list) / len(expert_ffn_list)))
+        expert_ffn = _scalar_or_mean_pos_int(expert_ffn_list, expert_ffn_nominal)
     else:
         expert_ffn = expert_ffn_nominal
-    expert_shared_ffn = int(meta.get(f"{arch}.expert_shared_feed_forward_length", 0))
+    expert_shared_ffn = _scalar_or_mean_pos_int(meta.get(f"{arch}.expert_shared_feed_forward_length", 0), 0)
     # llama.cpp hardcodes norm_w = true in build_moe_ffn() for several MoE architectures
-    # (e.g., src/models/qwen3moe.cpp:144, qwen35moe.cpp:514, granite.cpp:277, kimi-linear.cpp:508, mellum.cpp:186)
+    # (e.g., src/models/qwen3moe.cpp:144, qwen35moe.cpp:514, qwen4exp.cpp, granite.cpp:277, kimi-linear.cpp:508, mellum.cpp:186)
     # even when the GGUF converter omits the {arch}.expert_weights_norm metadata key.
     LLAMACPP_HARDCODED_NORM_W_ARCHS = {
-        "qwen3moe", "qwen35moe", "granite", "granitemoe", "kimi-linear", "mellum", "deepseek2"
+        "qwen3moe", "qwen35moe", "qwen4exp", "granite", "granitemoe", "kimi-linear", "mellum", "deepseek2"
     }
     expert_weights_norm = bool(
         meta.get(f"{arch}.expert_weights_norm", arch in LLAMACPP_HARDCODED_NORM_W_ARCHS)
@@ -309,6 +363,8 @@ def inspect_gguf(path: str) -> GGUFModelInfo:
         expert_weights_norm=expert_weights_norm,
         expert_weights_scale=expert_weights_scale,
         effective_expert_units=effective_units,
+        has_mtp=has_mtp,
+        ple_dim=ple_dim,
     )
 
 
@@ -334,8 +390,10 @@ class HardwareInfo:
         # Capping decode threads to 4 cores/CCD (32 threads on 8 CCDs = 80.14 tok/s vs 73.84 tok/s at 64T)
         # saturates 8-channel DDR5 while halving cross-CCD barrier latency.
         if self.num_ccds > 2 and n_phys > 24:
-            return min(n_phys, max(16, self.num_ccds * 4))
-        return n_phys
+            return min(max(1, n_phys - 1), max(16, self.num_ccds * 4))
+        # Non-convoy default (v3.0): leave 1 logical/physical core free for HTTP/OS threads
+        # paired with --poll 0 --poll-batch 0 (+25.9% prefill / +31.3% decode vs oversubscribed -t N).
+        return max(1, n_phys - 1) if n_phys > 1 else 1
 
     @property
     def batch_threads(self) -> int:
@@ -986,6 +1044,10 @@ def build_launch_command(
         f"LLAMA_RC_CERT_D1={prof.rc_cert_d1}",
         f"LLAMA_RC_CERT_D2={prof.rc_cert_d2}",
     ]
+    if prof.model.arch != "nemotron_h_moe":
+        env_parts.insert(0, "RC_TABLES_DIR=/nonexistent")
+    else:
+        env_parts.insert(0, f"RC_TABLES_DIR={shlex.quote(os.path.join(ws_dir, 'routecrack'))}")
     if prof.model.arch == "deepseek4":
         xdg = os.environ.get("XDG_RUNTIME_DIR", "").strip()
         priv_base = xdg if (xdg and os.path.isdir(xdg) and os.access(xdg, os.W_OK)) else os.path.join(ws_dir, "run")
@@ -1014,7 +1076,11 @@ def build_launch_command(
     ubatch = 2048
     slot_save_dir = "/dev/shm" if _has_large_shm() else os.path.join(ws_dir, "cache")
 
-    if prof.model.arch == "deepseek4" and prof.hw.ram_total_gib < 80.0:
+    if prof.model.arch == "qwen4exp":
+        if prof.hw.ram_total_gib < 96.0:
+            ctx_target = min(ctx_target, 32768)
+        ubatch = 512 if prof.hw.ram_total_gib < 48.0 else 2048
+    elif prof.model.arch == "deepseek4" and prof.hw.ram_total_gib < 80.0:
         avail_gib = _get_avail_ram_gib(prof.hw.ram_total_gib)
         if avail_gib < 64.0 or prof.hw.ram_total_gib <= 68.0:
             ctx_target = min(ctx_target, 32768)
@@ -1025,7 +1091,8 @@ def build_launch_command(
         ubatch = 512
         slot_save_dir = os.path.join(ws_dir, "cache")
 
-    load_mode = "mmap" if platform.system() == "Darwin" else "none"
+    load_mode = "mmap" if (platform.system() == "Darwin" or prof.model.arch == "qwen4exp") else "none"
+    fa_mode = "on" if prof.model.arch == "qwen4exp" else "auto"
     cmd_parts = [" ".join(env_parts)]
     if shutil.which("taskset") and prof.hw.taskset_mask:
         cmd_parts.append(f"taskset -c {prof.hw.taskset_mask}")
@@ -1034,24 +1101,39 @@ def build_launch_command(
         f"--model {shlex.quote(prof.model.path)}",
         f"--host 127.0.0.1 --port {port} --no-webui --offline",
         f"-c {ctx_target} -np 1",
-        f"-t {t_dec} -tb {t_bat}",
-        f"-cb -ub {ubatch} -b 2048 --flash-attn auto --load-mode {load_mode}",
+        f"-t {t_dec} -tb {t_bat} --poll 0 --poll-batch 0",
+        f"-cb -ub {ubatch} -b 2048 --flash-attn {fa_mode} --load-mode {load_mode}",
     ])
     if prof.use_eakv:
-        ctv = "q8_0" if prof.model.arch == "deepseek4" else "q4_0"
+        ctv = "q8_0" if prof.model.arch in ("deepseek4", "qwen4exp") else "q4_0"
         cmd_parts.append(f"--cache-type-k q8_0 --cache-type-v {ctv}")
     if prof.use_repack:
         cmd_parts.append("--repack")
     cmd_parts.append(f"--cache-reuse 256 --slot-save-path {shlex.quote(slot_save_dir)}")
-    if prof.model.is_hybrid_ssm or prof.model.arch == "deepseek4":
+    if prof.model.arch == "qwen4exp":
+        q_ckpts = 0 if prof.hw.ram_total_gib < 48.0 else 1
+        cmd_parts.append(f"--jinja --ctx-checkpoints {q_ckpts}")
+        if prof.model.is_qwen38_32gb:
+            cmd_parts.append("--temp 0.6 --top-p 0.95 --top-k 20 --presence-penalty 0.2 --repeat-penalty 1.05")
+    elif prof.model.is_hybrid_ssm or prof.model.arch == "deepseek4":
         cmd_parts.append("--ctx-checkpoints 64 --checkpoint-min-step 128")
-    if prof.rc_enabled:
-        cmd_parts.append(
-            "--spec-type ngram-simple "
-            "--spec-ngram-simple-size-n 4 "
-            "--spec-ngram-simple-size-m 7 "
-            "--spec-ngram-simple-min-hits 1"
-        )
+    if prof.model.arch == "qwen4exp" and prof.model.has_mtp:
+        cmd_parts.append("--spec-type draft-mtp")
+    elif prof.rc_enabled:
+        if prof.model.arch == "qwen4exp":
+            cmd_parts.append(
+                "--spec-type ngram-simple "
+                "--spec-ngram-simple-size-n 3 "
+                "--spec-ngram-simple-size-m 3 "
+                "--spec-ngram-simple-min-hits 1"
+            )
+        else:
+            cmd_parts.append(
+                "--spec-type ngram-simple "
+                "--spec-ngram-simple-size-n 4 "
+                "--spec-ngram-simple-size-m 7 "
+                "--spec-ngram-simple-min-hits 1"
+            )
     cmd_parts.append("--reasoning-format deepseek --reasoning-budget 0")
     return " \\\n  ".join(cmd_parts)
 
@@ -1071,7 +1153,7 @@ def print_profile_report(prof: ModchipProfile) -> None:
     m = prof.model
     hw = prof.hw
     print("┌" + "─" * 98 + "┐")
-    print(f"│ {'llama-modchip v2.5.5 — CPU GGUF Hardware & Topology Profiler':<96} │")
+    print(f"│ {'llama-modchip v3.0 — CPU GGUF Hardware & Topology Profiler':<96} │")
     print("├" + "─" * 98 + "┤")
     print(f"│ [HARDWARE] CPU: {hw.cpu_model[:44]:<44} | CCDs: {hw.num_ccds}x{hw.l3_per_ccd_mb:.0f}MB L3 | RAM: {hw.ram_total_gib:.0f} GiB │")
     print(f"│ [ISA/THP]  Flags: {', '.join(hw.isa_flags):<42} | THP: {hw.thp_mode:<10} | Cores: {len(hw.physical_core_cpus):<6} │")
@@ -1238,7 +1320,7 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
     native_top_k = m.expert_used_count if m.is_moe else 0
 
     print("\n" + "=" * 100)
-    print(f" RUNNING 1-COMMAND A/B BENCHMARK: Stock Baseline vs. llama-modchip v2.5.5 ({m.filename})")
+    print(f" RUNNING 1-COMMAND A/B BENCHMARK: Stock Baseline vs. llama-modchip v3.0 ({m.filename})")
     print("=" * 100)
 
     # 1. Baseline (Stock FP16 KV, Native Top-K, No SWA, No SHM override)
@@ -1301,7 +1383,7 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
         print("| :--- | :---: | :---: | :--- |")
         print(f"| **Stock Baseline** | `{pp_a:.2f} tok/s` | `{tg_a:.2f} tok/s` | `Top-K={native_top_k or 'Dense'}`, `FP16 KV`, `No SWA` |")
         print(
-            f"| **`llama-modchip v2.5.5`** | **`{pp_b:.2f} tok/s` (`{pp_gain:+.1f}%`)** | "
+            f"| **`llama-modchip v3.0`** | **`{pp_b:.2f} tok/s` (`{pp_gain:+.1f}%`)** | "
             f"**`{tg_b:.2f} tok/s` (`{tg_gain:+.1f}%`)** | "
             f"`Top-K={prof.moe_top_k or native_top_k or 'Dense'}`, `SWA_STRIDE={prof.swa_stride}`, `L3_WIN={prof.l3_window}`, `Q8_0/{ctv.upper()}` |"
         )
@@ -1338,7 +1420,7 @@ def run_tui(prof: ModchipProfile, port: int = 8789) -> None:
             h, w = stdscr.getmaxyx()
             m = prof.model
             hw = prof.hw
-            stdscr.addstr(0, 0, f"=== llama-modchip v2.5.5 (Live SHM TUI) == Target: {m.filename} ==="[:w - 1], curses.A_BOLD)
+            stdscr.addstr(0, 0, f"=== llama-modchip v3.0 (Live SHM TUI) == Target: {m.filename} ==="[:w - 1], curses.A_BOLD)
             stdscr.addstr(1, 0, f"CPU: {hw.cpu_model} ({hw.num_ccds}x{hw.l3_per_ccd_mb:.0f}MB L3) | Arch: {m.arch_summary}"[:w - 1])
             stdscr.addstr(2, 0, "-" * min(w - 1, 96))
 

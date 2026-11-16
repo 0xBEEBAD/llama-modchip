@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-llama-modchip v2.5.5 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
+llama-modchip v3.0 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
 Connects to local Gateway (8787) or llama-server (8789/8080/8001), streams tokens live,
-and reports exact Prefill tok/s, Decode tok/s, TTFT, and Stockfish-PVS (M=7) draft acceptance.
+and reports exact Prefill tok/s, Decode tok/s, TTFT, and NextN Draft-MTP / Stockfish-PVS acceptance.
 """
 
 import argparse
@@ -139,6 +139,13 @@ def detect_active_model(base_url: str) -> Tuple[str, str, str]:
     base_name = os.path.basename(raw_id)
     base_clean = re.sub(r"-0000\d-of-0000\d\.gguf$|\.gguf$", "", base_name, flags=re.IGNORECASE)
     low = base_clean.lower()
+    if "qwen3.8" in low or "qwen38" in low or "qwen4exp" in low:
+        ablit_tag = " · Abliterated" if "ablit" in low else ""
+        if "32gb" in low:
+            display = f"{base_clean} (80B+PLE / 512 Experts · 24.98 GiB Trunk + Lazy PLE · NextN MTP{ablit_tag})"
+        else:
+            display = f"{base_clean} (80B+PLE / 512 Experts · 53.99 GiB Full-RAM · NextN MTP{ablit_tag})"
+        return raw_id, display, "Qwen3.8-Flash-Next"
     if "deepseek" in low or "dsv4" in low:
         if "abliterated" in low:
             display = f"{base_clean} (284B MoE / 13.2B Active · Single-Pass Q6_K + Fractal-64 · Uncensored)"
@@ -532,23 +539,36 @@ def get_server_affinity_summary(base_url: str) -> str:
 def stream_chat_turn(
     base_url: str,
     messages: List[Dict[str, str]],
-    max_tokens: int = 1024,
+    max_tokens: int = 4096,
     think_budget: int = 0,
     quiet: bool = False,
+    raw_model_id: str = "",
+    deterministic: bool = False,
 ) -> Dict[str, float]:
     url = f"{base_url}/v1/chat/completions"
-    payload = {
-        "model": "nemotron-30b",
+    low_m = (raw_model_id or "").lower()
+    is_qwen38_32gb = ("qwen3.8" in low_m or "qwen38" in low_m) and "32gb" in low_m
+    eff_max_tokens = max(max_tokens, 16384) if think_budget != 0 else max_tokens
+    payload: Dict[str, object] = {
+        "model": raw_model_id or "modchip-local",
         "messages": messages,
         "stream": True,
-        "temperature": 0.0,
-        "repeat_penalty": 1.05,
-        "repeat_last_n": 64,
-        "max_tokens": max_tokens,
+        "max_tokens": eff_max_tokens,
         "reasoning_budget": think_budget,
         "chat_template_kwargs": {"enable_thinking": think_budget != 0},
         "timings_per_token": True,
     }
+    if not deterministic and is_qwen38_32gb:
+        payload["temperature"] = float(os.environ.get("MODCHIP_CHAT_TEMP", "0.6"))
+        payload["top_p"] = 0.95
+        payload["top_k"] = 20
+        payload["presence_penalty"] = 0.2
+        payload["repeat_penalty"] = 1.05
+        payload["repeat_last_n"] = 64
+    else:
+        payload["temperature"] = float(os.environ.get("MODCHIP_CHAT_TEMP", "0.0"))
+        payload["repeat_penalty"] = 1.05
+        payload["repeat_last_n"] = 64
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -635,11 +655,11 @@ def stream_chat_turn(
     }
 
 
-def print_turn_telemetry(stats: Dict[str, float]) -> None:
+def print_turn_telemetry(stats: Dict[str, float], spec_label: str = "Spec") -> None:
     spec_part = ""
     if stats["draft_n"] > 0:
         spec_part = (
-            f" │ {PURPLE}♟️ Stockfish-PVS: {stats['draft_acc']}/{stats['draft_n']} "
+            f" │ {PURPLE}⚡ {spec_label}: {stats['draft_acc']}/{stats['draft_n']} "
             f"({stats['acc_pct']:.1f}% acc){RESET}"
         )
     pp_part = f" │ {CYAN}🧠 Prefill: {stats['pp_tps']:.1f} tok/s{RESET}" if stats["pp_tps"] > 0 else ""
@@ -696,8 +716,9 @@ def run_benchmark_suite(base_url: str) -> None:
         hw_scorecard = f"Remote ({base_url} — run './modchip bench' on server host for CPU/THP info)"
     aff_header = get_server_affinity_summary(base_url)
     raw_model, model_display, prompt_label = detect_active_model(base_url)
+    spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.5 — Automated 2-Stage CPU Benchmark Suite                    ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.0 — Automated 2-Stage CPU Benchmark Suite                      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_header}")
     if aff_header:
@@ -714,11 +735,11 @@ def run_benchmark_suite(base_url: str) -> None:
             "content": "Write a cache-line aligned (alignas(64)) SPSC lock-free ring buffer in C++20 using std::atomic with acquire/release memory ordering.",
         },
     ]
-    s1 = stream_chat_turn(base_url, msgs1, max_tokens=250, think_budget=0, quiet=False)
-    print_turn_telemetry(s1)
+    s1 = stream_chat_turn(base_url, msgs1, max_tokens=250, think_budget=0, quiet=False, raw_model_id=raw_model, deterministic=True)
+    print_turn_telemetry(s1, spec_label=spec_lbl)
 
-    # Stage 2: In-Context Code Refactoring (Stockfish-PVS Burst)
-    print(f"\n{BOLD}[2/2] Stage 2: In-Context Code Refactoring — Stockfish-PVS Burst (350 tokens)...{RESET}")
+    # Stage 2: In-Context Code Refactoring
+    print(f"\n{BOLD}[2/2] Stage 2: In-Context Code Refactoring — {spec_lbl} Burst (350 tokens)...{RESET}")
     msgs2 = [
         {"role": "system", "content": "You are an expert Python systems engineer. Output the refactored class directly."},
         {
@@ -730,12 +751,12 @@ def run_benchmark_suite(base_url: str) -> None:
             ),
         },
     ]
-    s2 = stream_chat_turn(base_url, msgs2, max_tokens=350, think_budget=0, quiet=False)
-    print_turn_telemetry(s2)
+    s2 = stream_chat_turn(base_url, msgs2, max_tokens=350, think_budget=0, quiet=False, raw_model_id=raw_model, deterministic=True)
+    print_turn_telemetry(s2, spec_label=spec_lbl)
 
     pp_best = max(s1["pp_tps"], s2["pp_tps"])
     if s2["draft_n"] > 0:
-        s2_spec_note = f"Stockfish-PVS Acceptance: {s2['acc_pct']:.1f}% ({s2['draft_acc']}/{s2['draft_n']})"
+        s2_spec_note = f"{spec_lbl} Acceptance: {s2['acc_pct']:.1f}% ({s2['draft_acc']}/{s2['draft_n']})"
     else:
         s2_spec_note = "Speculative: disabled / 0 drafts"
 
@@ -749,7 +770,7 @@ def run_benchmark_suite(base_url: str) -> None:
         ).strip()
     except Exception:
         pass
-    ver_tag = f"v2.5.5 ({git_rev})" if git_rev else "v2.5.5"
+    ver_tag = f"v3.0 ({git_rev})" if git_rev else "v3.0"
     banner_text = f"LLAMA-MODCHIP {ver_tag} BENCHMARK SCORECARD"
     vis_w = sum(2 if ord(ch) > 0xFFFF else 1 for ch in banner_text)
     banner_line = f"║ {banner_text}{' ' * max(1, 83 - vis_w)}║"
@@ -820,18 +841,19 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
         hw_summary = f"remote endpoint {base_url}"
         hw_banner = f"{BOLD}Remote Endpoint{RESET} ({base_url})"
     raw_model, model_display, prompt_label = detect_active_model(base_url)
+    spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
     sys_prompt = build_chat_system_prompt(model_display, hw_summary)
     if one_shot_prompt:
         msgs = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": one_shot_prompt},
         ]
-        stats = stream_chat_turn(base_url, msgs, max_tokens=512, think_budget=0, quiet=False)
-        print_turn_telemetry(stats)
+        stats = stream_chat_turn(base_url, msgs, max_tokens=1024, think_budget=0, quiet=False, raw_model_id=raw_model)
+        print_turn_telemetry(stats, spec_label=spec_lbl)
         return
 
     print(f"{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v2.5.5 — Interactive CPU Chat + Live Stockfish-PVS Telemetry      ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.0 — Interactive CPU Chat + Live Speculative Telemetry          ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_banner}")
     print(f"  • Model    : {BOLD}{GREEN}{model_display}{RESET}")
@@ -861,6 +883,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
             continue
         if user_in.lower() in ("/model", "/status"):
             raw_model, model_display, prompt_label = detect_active_model(base_url)
+            spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
             sys_prompt = build_chat_system_prompt(model_display, hw_summary)
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = sys_prompt
@@ -872,16 +895,16 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
         if user_in.lower().startswith("/think"):
             parts = user_in.split()
             mode = parts[1].lower() if len(parts) > 1 else "no"
-            think_budget = {"no": 0, "med": 1024, "max": -1}.get(mode, 0)
-            print(f"{DIM}[Thinking budget set to: {mode.upper()} ({think_budget})]{RESET}\n")
+            think_budget = {"no": 0, "med": 4096, "max": -1}.get(mode, 0)
+            print(f"{DIM}[Thinking budget set to: {mode.upper()} ({think_budget}; max_tokens >= 16384 when enabled)]{RESET}\n")
             continue
 
         messages.append({"role": "user", "content": user_in})
         sys.stdout.write(f"\n{BOLD}{CYAN}{prompt_label} > {RESET}")
         sys.stdout.flush()
         try:
-            stats = stream_chat_turn(base_url, messages, max_tokens=1024, think_budget=think_budget, quiet=False)
-            print_turn_telemetry(stats)
+            stats = stream_chat_turn(base_url, messages, max_tokens=4096, think_budget=think_budget, quiet=False, raw_model_id=raw_model)
+            print_turn_telemetry(stats, spec_label=spec_lbl)
             print()
         except urllib.error.URLError as e:
             print(f"\n{YELLOW}[!] Connection error ({base_url}): {e}{RESET}")
@@ -890,7 +913,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="llama-modchip v2.5.5 Interactive Terminal Chat & Benchmark Client")
+    parser = argparse.ArgumentParser(description="llama-modchip v3.0 Interactive Terminal Chat & Benchmark Client")
     parser.add_argument("--url", default=None, help="Server or Gateway base URL (auto-detected by default)")
     parser.add_argument("--bench", action="store_true", help="Run the 2-stage benchmark suite and print shareable scorecard")
     parser.add_argument("-p", "--prompt", default=None, help="Send a single prompt, stream output, print tok/s, and exit")

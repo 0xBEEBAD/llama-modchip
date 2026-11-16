@@ -17,7 +17,7 @@
 
 ## 2. Operator-by-Operator Profiling (Prefill vs Decode on 16C/32T Zen 5)
 
-Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` ([`patches/deepseek-v4-flash-fractal-256k.patch`](../patches/deepseek-v4-flash-fractal-256k.patch)) on an **AMD Ryzen 9 9955HX (`16C/32T Zen 5`, `0 GPUs`)**:
+Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` (`patches/deepseek-v4-flash-fractal-256k.patch`) on an **AMD Ryzen 9 9955HX (`16C/32T Zen 5`, `0 GPUs`)**:
 
 ### A. Single-Token Decode (`N=1`, `4,551` Graph Nodes) — Evolution Across Optimizations
 
@@ -48,7 +48,7 @@ Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` ([`patches/d
 
 ### 3.1. SVD Spectrum of the Linear `wo_b * wo_a` Operator (`31%` of DRAM Traffic = `991.6 MB/token`)
 
-In [`deepseek4.cpp`](../patches/deepseek-v4-flash-fractal-256k.patch), the attention output projection applies two consecutive `Q2_0` matrices across `8` head-groups (`4096` input MLA group dim $= 8 \text{ heads} \times 512 \text{ latent dim}$, `1024` inner LoRA rank per group, `8192` total) with **no activation function, no normalization, and no bias** between them:
+In `deepseek4.cpp`, the attention output projection applies two consecutive `Q2_0` matrices across `8` head-groups (`4096` input MLA group dim $= 8 \text{ heads} \times 512 \text{ latent dim}$, `1024` inner LoRA rank per group, `8192` total) with **no activation function, no normalization, and no bias** between them:
 $$\mathbf{y}_{\text{attn}} = \sum_{g=1}^{8} \mathbf{W}_{o,b}^{(g)} \left( \mathbf{W}_{o,a}^{(g)} \mathbf{x}_g \right), \qquad \mathbf{W}_{o,a}^{(g)} \in \mathbb{R}^{1024 \times 4096},\; \mathbf{W}_{o,b}^{(g)} \in \mathbb{R}^{4096 \times 1024}$$
 
 De-quantizing the GGUF tensors (`blk.{0,3,4,10}.attn_output_{a,b}.weight`) and computing the Singular Value Decomposition $\mathbf{W}_{o,b}^{(g)} \mathbf{W}_{o,a}^{(g)} = \mathbf{U}_g \boldsymbol{\Sigma}_g \mathbf{V}_g^\top$ shows rapid spectral decay ($\sigma_0 = 15.398 \to \sigma_{768} = 0.901 \to \sigma_{1023} = 0.048$):
@@ -122,7 +122,7 @@ $$\mathbf{h} = \text{SiLU}(\mathbf{W}_{\text{gate}} \mathbf{x}) \odot (\mathbf{W
 
 ## 5. Shipped 64 GB `0731` Checkpoints (`v2.5.3`): Donor-Free Single-Pass `MaxQ-Fractal` (`56.93 GiB` Aligned Default), `LUT-VQ3-64` (`56.40 GiB`), `Fractal` (`56.57 GiB`), & Opt-In `Abliterated-Fractal`
 
-`v2.5.3` ships four 3-shard `DeepSeek-V4-Flash-0731` checkpoints tailored for 64 GB CPU hosts ([`scripts/build_dsv4_maxq_singlepass.py`](../scripts/build_dsv4_maxq_singlepass.py), [`patches/lut-vq3-64-avx512-vbmi.patch`](../patches/lut-vq3-64-avx512-vbmi.patch), [`scripts/build_dsv4_vq3.py`](../scripts/build_dsv4_vq3.py), [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)):
+`v2.5.3` ships four 3-shard `DeepSeek-V4-Flash-0731` checkpoints tailored for 64 GB CPU hosts (`scripts/build_dsv4_maxq_singlepass.py`, `patches/lut-vq3-64-avx512-vbmi.patch`, `scripts/build_dsv4_vq3.py`, [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)):
 
 - **Safety-Aligned Default — [`DeepSeek-V4-Flash-0731-MaxQ-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,160` B, `57.54–58.13 GiB` `VmRSS`, `./modchip setup` default `dsv4-maxq`):**
   - Donor-free single-pass quantization across all `1,328 / 1,328` weight tensors directly from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe23eabc4c98b48bffcef5a386062`): `174` dense 100%-active bottleneck tensors (`token_embd`, `output`, `43× attn_q_a`, `43× ffn_{gate,up,down}_shexp` -> `173 × Q6_K + 1 × Q8_0`), `317` MLA/Indexer tensors (`Fractal-64`, `GGML_TYPE_Q2_0 = 42`, `3.75 bpw`), and all `129` 3D routed-MoE tensors quantized single-pass with `@antirez`'s `1.5M`-token `routed-moe-ds4-1p5m.dat` (`@ f71f23d552d6`, calibrated `2026-05-12` on April `DeepSeek-V4-Flash` `chat-v2` activations).

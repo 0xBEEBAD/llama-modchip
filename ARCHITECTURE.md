@@ -1,9 +1,17 @@
-# Technical Paper & Systems Architecture: Running a 30B Hybrid SSM-MoE on CPU at 30–50+ tok/s with a 256K Context Window
+# Technical Paper & Systems Architecture: Unified `MaxQ v3.0` Multi-Tier CPU/Hybrid Inference (`16 GB` · `32 GB` · `64 GB`)
 
-**Breaking the DDR5 Bandwidth Wall and Quadratic Attention Trap on Dual-CCD AMD Zen 5 via Hybrid Mamba-2 SSM, Bidirectional L3 Non-Temporal Streaming, Draftless Linear Speculative Decoding (`RouteCrack`), AVX-512 VNNI Tile Repacking, 2MB HugePages, and External Cognitive Memory**
+**Breaking the DDR5 Bandwidth Wall, Per-Layer Embedding Footprint Wall, and Quadratic Attention Trap via Hybrid State-Space (`Mamba-2` & `Gated DeltaNet`), `PCA-Wiener + RaBitQ` Lazy PLE, Zero-Collision `v3.0` SIMD Kernels, Zero-Copy 3D MoE `--repack`, and `NextN` MTP / `Stockfish-PVS v2` Speculative Decoding**
 
-*Author: Paolo C | Date: October–November 2026*
-*Navigation: [Back to Overview & Quickstart (`README.md`)](README.md) · [Engineering FAQ & Xeon/EPYC Scaling (`FAQ.md`)](FAQ.md) · [LUT-VQ3-64 Quality Gate (`benchmarks/QUALITY_GATE_VQ3_64.md`)](benchmarks/QUALITY_GATE_VQ3_64.md)*
+*Author: Paolo | Date: October–November 2026*
+*Navigation: [Back to Overview & Quickstart (`README.md`)](README.md) · [Release Notes (`RELEASE_NOTES.md`)](RELEASE_NOTES.md) · [Engineering FAQ (`FAQ.md`)](FAQ.md) · [Quality Gate (`benchmarks/QUALITY_GATE_VQ3_64.md`)](benchmarks/QUALITY_GATE_VQ3_64.md)*
+
+---
+
+> [!NOTE]
+> **`v3.0` Multi-Architecture Unification (`patches/llama-modchip-v3.0.patch`):** Starting with `llama-modchip v3.0`, all engine optimizations below are unified into a single cross-platform patch against `ggml-org/llama.cpp @ de32b268c` with **zero upstream tensor-type collisions** (`GGML_TYPE_Q2_0 = 42` and `GGML_TYPE_F8_E4M3 = 43` remain 100% untouched; `Fractal-64` is `GGML_TYPE_FRACTAL_64 = 44` and `LUT-VQ3-64` is `GGML_TYPE_VQ3_64 = 45`):
+> - **`64 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-64GB`, `53.99 GiB` & `DeepSeek-V4-Flash-0731-MaxQ-v4`, `57.99 GiB`):** Compresses `Qwen3.8`'s `320M`-row PLE table from `26.82 GiB` to `10.73 GiB` (`PCA-Wiener D=256 + RaBitQ Q1_0 = 41`) so all `512/512` routed experts + `FP64 Woodbury DualGram Q2_0 (42)` + built-in `blk.48` `NextN` MTP run at **`3.4325` blind `wiki-alt.txt` PPL (`-46.6%` KLD vs `54.40 GiB` pruned competitors)** and **`12.66 tok/s` `tg128` (`93.0%` MTP accept, `71.97 tok/s` `pp512`, `VmHWM = 45.08 GiB`)** via 512-bit `Q1_0`/`Q2_0`/`MXFP4` kernels, 8-`zmm` multi-threaded `GATED_DELTA_NET`, zero-copy 3D MoE `--repack`, and non-convoy `-t $((N_CORES - 1)) --poll 0` scheduling.
+> - **`32 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-32GB`, `35.71 GiB` total = `24.98 GiB` Shard 1 + `10.73 GiB` Lazy NVMe PLE):** Keeps `42` ConeCollapsed (`K = 512`) + `7` full-width (`K = 640`) trunk/MTP layers hot in RAM while demand-paging Shard 2 PLE via `mmap` (`2 MiB` inward-aligned `MADV_HUGEPAGE`), verified under Linux Cgroup v2 (`memory.max = 28.5 GiB`, `MemorySwapMax = 0`, `VmHWM = 26.91 GiB <= 28.5 GiB`, **`11.45–14.29 tok/s` `draft-mtp`**, **`38.5 ms` / `~19 ms` `/dev/shm` Slot-0 hybrid state restore**).
+> - **`16 GB` Tier (`NVIDIA-Nemotron-3.5-30B-A3B`, `13.30 GiB` `VQ3-64` `v3.0` & `~13.3 GiB` `MaxQ-16GB` Standard `ggml`):** Detailed in Sections 1–5 below.
 
 ---
 
@@ -514,7 +522,7 @@ Measured on true unquantized `BF16` expert weights from `NVIDIA-Nemotron-3.5-Lig
 
 #### 3. Three-Way Live Hardware Verification (`benchmarks/eval_quality_and_tools.py`, AMD Zen 5)
 
-Built via [`scripts/build_fractal_moe_gguf.sh`](scripts/build_fractal_moe_gguf.sh) (`--profile fractal64` from `BF16`, or `--profile mxfp4` when re-quantizing from `Q4_0`), keeping the 6 GQA attention layers (`attn_q`, `attn_k`, `attn_v`, `attn_output`), `ssm_out`, and `output.weight` at `Q8_0` (full report and raw JSON outputs in [`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) and [`benchmarks/results/`](benchmarks/results/)):
+Built via `scripts/build_fractal_moe_gguf.sh` (`--profile fractal64` from `BF16`, or `--profile mxfp4` when re-quantizing from `Q4_0`), keeping the 6 GQA attention layers (`attn_q`, `attn_k`, `attn_v`, `attn_output`), `ssm_out`, and `output.weight` at `Q8_0` (full report and raw JSON outputs in [`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) and [`benchmarks/results/`](benchmarks/results/)):
 
 | Metric / Suite | `Baseline-Q4_0` (Official GGUF) | `Fractal-MXFP4` (from `Q4_0`) | **`Fractal-64-BF16` (from `BF16` `58.84 GiB`)** | `Fractal-64-BF16` vs Baseline |
 | :--- | :---: | :---: | :---: | :---: |
@@ -564,10 +572,10 @@ Scaling CPU inference from a `30B` MoE (`3.0B` active) to **`DeepSeek-V4-Flash` 
 2. **The 256-Expert SwiGLU Degradation Wall**: Naive uncalibrated `IQ1_S` (`1.5625 bpw`) quantization across all 256 routed experts collapses SwiGLU gating accuracy because high-norm activation channels in $W_{\text{gate}}^{(e)} \odot W_{\text{up}}^{(e)}$ are quantized with uniform MSE weight.
 3. **3D Multi-Head `wo_a` L1D Thrashing & MLA Sparse Gather Stalls**: DeepSeek-V4's 3D attention output projection (`wo_a`, `ne02 > 1`) overflows the `48 KB` Zen 5 L1D cache when tiled over `i01` (`TILE_I1 = 32`), and its sparse indexer attention mask (`csa_top_k_mask`) gathers non-contiguous historical latent rows from DDR5.
 
-We solve all three walls in [`patches/deepseek-v4-flash-fractal-256k.patch`](patches/deepseek-v4-flash-fractal-256k.patch), [`scripts/transcode_dsv4.c`](scripts/transcode_dsv4.c), and [`scripts/transcode_dsv4_shard.py`](scripts/transcode_dsv4_shard.py) (invoked via [`scripts/build_fractal_moe_gguf.sh --deepseek`](scripts/build_fractal_moe_gguf.sh)):
+We solve all three walls in `patches/deepseek-v4-flash-fractal-256k.patch`, `scripts/transcode_dsv4.c`, and `scripts/transcode_dsv4_shard.py` (invoked via `scripts/build_fractal_moe_gguf.sh --deepseek`):
 
 #### 1. Analytical Second-Order `SwiGLU-H2` Importance Quantization + `Fractal-64` (`Q2_0`, `3.75 bpw`) MLA Transcoding (`76.87 GiB -> 56.56 GiB`)
-- **Closed-Form `SwiGLU-H2` Hessian Diagonal (`transcode_moe_exps` in [`scripts/transcode_dsv4.c`](scripts/transcode_dsv4.c))**:
+- **Closed-Form `SwiGLU-H2` Hessian Diagonal (`transcode_moe_exps` in `scripts/transcode_dsv4.c`)**:
   For each expert $e \in \{0\dots 255\}$ and intermediate channel $j \in \{0\dots d_{\text{ff}}-1\}$, the SwiGLU output enters `ffn_down_exps` as $h_{e,j}(x) = \text{SiLU}(w_{\text{gate},e,j}^\top x) \cdot (w_{\text{up},e,j}^\top x)$. Under isotropic unit-variance input activations, the expected second moment of channel $j$—which scales the second-order quantization error of row $j$ in `ffn_down_exps`—is proportional to the product of the squared row norms of the paired Gate and Up slices:
   $$I_{e,j} = \left\|W_{\text{gate}}^{(e)}[j,:]\right\|_2^2 \cdot \left\|W_{\text{up}}^{(e)}[j,:]\right\|_2^2$$
   In `transcode_moe_exps()`, we dequantize the paired `ffn_gate_exps` and `ffn_up_exps` tensors simultaneously across OpenMP threads, compute $I_{e,j}$ analytically without requiring an external calibration dataset, and pass $I_{e,j}$ as the `quantize_row_iq1_s` importance vector. Sensitivity-anchored layers (`DOWN_IQ2_LAYERS = {0, 1, 26, 28, 41, 42}` in `IQ2_XXS`, `DOWN_IQ1M_LAYERS = {2, 4, 5, 8, 27, 30, 32, 40}` in `IQ1_M`, and `GATE_UP_KEEP_IQ2 = {1, 4, 26, 28, 40}` in `IQ2_XXS`) preserve critical early/late routing layers, while bulk routed expert layers compress cleanly to `IQ1_S` (`1.5625 bpw`).
@@ -610,7 +618,7 @@ We solve all three walls in [`patches/deepseek-v4-flash-fractal-256k.patch`](pat
 
 ### 3.13. Optimization 13: `LUT-VQ3-64` (`GGML_TYPE_VQ3_0 = 43`, `24 B / 64 W = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B`
 
-Introduced in `v2.5.0` ([`vq3/`](vq3/), [`patches/lut-vq3-64-avx512-vbmi.patch`](patches/lut-vq3-64-avx512-vbmi.patch), [`patches/vq3_codebook.h`](patches/vq3_codebook.h), [`benchmarks/QUALITY_GATE_VQ3_64.md`](benchmarks/QUALITY_GATE_VQ3_64.md)):
+Introduced in `v2.5.0` (`vq3/`, `patches/lut-vq3-64-avx512-vbmi.patch`, `patches/vq3_codebook.h`, [`benchmarks/QUALITY_GATE_VQ3_64.md`](benchmarks/QUALITY_GATE_VQ3_64.md)):
 
 1. **Spherical 3D Vector Quantization (`block_vq3_0`, `24 bytes` per `64` weights)**:
    - Heavy-tailed MoE weights ($\kappa = 3.2–4.8$) concentrate inside the 3D $L_2$ sphere / $L_1$ cross-polytope rather than Cartesian cube corners. `LUT-VQ3-64` stores a `2-byte` `FP16` super-scale `d` plus `22 bytes` (`qs[22]`): the low 7 bits (`qs[k] & 0x7F`) pack `20 × 7-bit` 3D spherical Lloyd-Max indices (`k = 0..19`, stride-22 weight triples) and `2 × 6-bit` 2D tail indices (`k = 20..21`, placed in the lower/upper 64-centroid half of the 128-entry codebook to encode bits `22..23` of `s24`), while bit 7 (`qs[k] >> 7` for `k = 0..21`) packs bits `0..21` of `s24` (`8 × 3-bit` unsigned sub-scales, `mult = 2 + u_b ∈ {2..9}`, `24 B / 64 W = 3.00 bpw`).

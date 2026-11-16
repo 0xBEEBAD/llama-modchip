@@ -22,7 +22,7 @@ if (-not (Test-Path $ModelDir)) { New-Item -ItemType Directory -Path $ModelDir |
 function Write-Banner {
     Clear-Host
     Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "  llama-modchip v2.5.3 -- Windows Hybrid GPU + CPU MoE Edition" -ForegroundColor Green
+    Write-Host "  llama-modchip v3.0 -- Windows Hybrid GPU + CPU MoE Edition" -ForegroundColor Green
     Write-Host "  Ottimizzato per NVIDIA RTX / AMD Vulkan (8-16 GB VRAM) + CPU (16-128 GB RAM)" -ForegroundColor White
     Write-Host "================================================================================" -ForegroundColor Cyan
 }

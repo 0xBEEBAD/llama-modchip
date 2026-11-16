@@ -65,7 +65,7 @@ function Find-Model {
     # Prefer safety-aligned split GGUFs first (MaxQ-v4 -> MaxQ-Fractal -> VQ3 -> Fractal), then opt-in Abliterated
     $shard1Files = @(Get-ChildItem -LiteralPath $ModelDir -Filter "*.gguf" -File |
                      Where-Object { $_.Name -match "-00001-of-\d+\.gguf$" })
-    foreach ($pat in @("MaxQ-v4", "MaxQ-Fractal", "VQ3", "Fractal", "Abliterated")) {
+    foreach ($pat in @("Qwen3.8", "MaxQ-v4", "MaxQ-Fractal", "VQ3", "Fractal", "Abliterated")) {
         $match = $shard1Files | Where-Object {
             if ($pat -eq "Abliterated") { $_.Name -match "Abliterated" }
             else { ($_.Name -notmatch "Abliterated") -and ($_.Name -match $pat) }
@@ -145,12 +145,15 @@ $modelGB = [math]::Round($modelInfo.Length / 1GB, 2)
 $patched = $exe -like "*bin-modchip*" -or $exe -like "*build-mingw*"
 
 $isNemotron = $modelInfo.Name -match '(?i)nemotron'
-$modelAlias = if ($isNemotron) { "nemotron-3.5-30b-a3b" } else { "deepseek-v4-flash" }
+$isQwen38   = $modelInfo.Name -match '(?i)qwen3\.?8'
+$isQwen32GB = $isQwen38 -and ($modelInfo.Name -match '(?i)32gb')
+$modelAlias = if ($isQwen38) { "qwen3.8-flash-next" } elseif ($isNemotron) { "nemotron-3.5-30b-a3b" } else { "deepseek-v4-flash" }
 $kvTypeV    = if ($isNemotron -and $KvType -eq "q8_0") { "q4_0" } else { $KvType }
+if (-not $isNemotron) { $env:RC_TABLES_DIR = "/nonexistent" }
 
-Write-Head ("llama-modchip v3.0 -- {0} (FRACTAL_64 / VQ3_64) on Windows" -f $(if ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
+Write-Head ("llama-modchip v3.0 -- {0} on Windows" -f $(if ($isQwen38) { "Qwen3.8-Flash-Next MaxQ" } elseif ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
 
-if ($Threads -le 0) { $Threads = [math]::Max(1, $hw.PhysCores) }
+if ($Threads -le 0) { $Threads = [math]::Max(1, $hw.PhysCores - 1) }
 
 # Total size of a split GGUF
 $shards = @(Get-ChildItem -LiteralPath $ModelDir -Filter "*.gguf" -File |
@@ -213,6 +216,9 @@ $srvArgs = @(
     "-np", "1",
     "-t", "$Threads",
     "-tb", "$Threads",
+    "--poll", "0",
+    "--poll-batch", "0",
+    "--repack",
     "-b", "2048",
     "-ub", "2048",
     "-fa", "on",
@@ -223,7 +229,12 @@ $srvArgs = @(
     "--metrics",
     "--reasoning-format", "deepseek"
 )
-if ($isNemotron) {
+if ($isQwen38) {
+    $srvArgs += @("--ctx-checkpoints", $(if ($isQwen32GB) { "0" } else { "1" }))
+    if ($isQwen32GB) {
+        $srvArgs += @("--temp", "0.6", "--top-p", "0.95", "--top-k", "20", "--presence-penalty", "0.2", "--repeat-penalty", "1.05")
+    }
+} elseif ($isNemotron) {
     $srvArgs += @("--ctx-checkpoints", "64", "--checkpoint-min-step", "128")
 } else {
     # Anti-loop sampling for ultra-low-bpw 284B builds.
@@ -242,12 +253,16 @@ if ($Thinking) { $srvArgs += @("--reasoning-budget", "-1") } else { $srvArgs += 
 if ($NPredict -ge 0) { $srvArgs += @("-n", "$NPredict") }
 
 if (-not $NoSpec) {
-    $srvArgs += @(
-        "--spec-type", "ngram-simple",
-        "--spec-ngram-simple-size-n", "4",
-        "--spec-ngram-simple-size-m", "7",
-        "--spec-ngram-simple-min-hits", "1"
-    )
+    if ($isQwen38) {
+        $srvArgs += @("--spec-type", "draft-mtp")
+    } else {
+        $srvArgs += @(
+            "--spec-type", "ngram-simple",
+            "--spec-ngram-simple-size-n", "4",
+            "--spec-ngram-simple-size-m", "7",
+            "--spec-ngram-simple-min-hits", "1"
+        )
+    }
 }
 
 # Hybrid GPU + CPU split.

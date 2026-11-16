@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ♟️ ./modchip — Unified CLI for 256K CPU Co-Design, RouteCrack & Stockfish-PVS v2
+# ♟️ ./modchip — Unified CLI for llama-modchip v3.0 (16GB / 32GB / 64GB MaxQ)
 # ==============================================================================
 # Usage:
-#   ./modchip setup [args]          # Build patched llama.cpp + Stockfish-PVS & download GGUF
-#   ./modchip download-bin [dir]    # Download CPU-matched Linux x86_64 binary (-avx512 or -avx2)
-#   ./modchip start [model.gguf]    # Start 256K CPU Server + Web UI Gateway in background
-#   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s telemetry
+#   ./modchip setup [args]          # Install unified v3.0 engine & select 16GB/32GB/64GB GGUF
+#   ./modchip download-bin [dir]    # Download CPU-matched Linux x86_64 v3.0 binary (-avx512 or -avx2)
+#   ./modchip start [model.gguf]    # Start v3.0 CPU/Hybrid Server + Web UI Gateway in background
+#   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s & MTP/PVS telemetry
 #   ./modchip bench                 # Run 2-stage speed test & print shareable CPU scorecard
 #   ./modchip eval [args]           # Run 100-pt Quality, Tool-Calling, Coding & Needle Gate
-#   ./modchip quantize [args]       # Build VQ3-64 (13.30 GiB), Fractal-64 (14.35 GiB) or MXFP4 (15.95 GiB) GGUF
 #   ./modchip web                   # Open Live Web Chat & Telemetry HUD (http://127.0.0.1:8787)
 #   ./modchip claude [args]         # Launch Claude Code CLI wired to local CPU engine
 #   ./modchip status                # Inspect live server, HugePages & per-UID Modchip SHM
@@ -43,6 +42,7 @@ print(h.hexdigest())
 PYEOF
     fi
 }
+
 SERVER_PORT_FILE="${PID_DIR}/server_port"
 if [[ -z "${SERVER_PORT:-}" ]] && [[ -f "$SERVER_PORT_FILE" ]]; then
     SERVER_PORT="$(head -n 1 "$SERVER_PORT_FILE" 2>/dev/null | tr -d '[:space:]')"
@@ -57,14 +57,21 @@ if [[ -z "${GATEWAY_HOST:-}" ]] && [[ -f "$GATEWAY_HOST_FILE" ]]; then
     GATEWAY_HOST="$(head -n 1 "$GATEWAY_HOST_FILE" 2>/dev/null | tr -d '[:space:]')"
 fi
 GATEWAY_HOST="${GATEWAY_HOST:-127.0.0.1}"
+
+QWEN38_64GB_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-64gb/Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf"
+QWEN38_64GB_ABLIT_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-64gb-ablit/Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf"
 DSV4_MAXQ_V4_MODEL="${WORKSPACE_DIR}/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
+QWEN38_32GB_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-32gb/Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf"
+QWEN38_32GB_ABLIT_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-32gb-ablit/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf"
+VQ3_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf"
+NEMO_MAXQ_16GB_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf"
+NEMOTRON_ABLIT_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf"
+# Legacy v2.5.x local paths (preserved so existing downloads keep resolving)
 DSV4_MAXQ_MODEL="${WORKSPACE_DIR}/models/dsv4-maxq-fractal/DeepSeek-V4-Flash-0731-MaxQ-Fractal-00001-of-00003.gguf"
 DSV4_VQ3_MODEL="${WORKSPACE_DIR}/models/dsv4-vq3/DeepSeek-V4-Flash-0731-VQ3-00001-of-00003.gguf"
 DSV4_FRACTAL_MODEL="${WORKSPACE_DIR}/models/dsv4-fractal/DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf"
 DSV4_ABLIT_MODEL="${WORKSPACE_DIR}/models/dsv4-abliterated-fractal/DeepSeek-V4-Flash-0731-Abliterated-Fractal-00001-of-00003.gguf"
-VQ3_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf"
 FRACTAL_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf"
-NEMOTRON_ABLIT_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf"
 Q4_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf"
 DEFAULT_MODEL_FILE="${PID_DIR}/default_model"
 
@@ -75,8 +82,22 @@ resolve_default_model() {
     fi
     if [[ -n "$saved" && -f "$saved" ]]; then
         printf '%s\n' "$saved"
+    elif [[ -f "$QWEN38_64GB_MODEL" ]]; then
+        printf '%s\n' "$QWEN38_64GB_MODEL"
+    elif [[ -f "$QWEN38_32GB_MODEL" ]]; then
+        printf '%s\n' "$QWEN38_32GB_MODEL"
     elif [[ -f "$DSV4_MAXQ_V4_MODEL" ]]; then
         printf '%s\n' "$DSV4_MAXQ_V4_MODEL"
+    elif [[ -f "$QWEN38_64GB_ABLIT_MODEL" ]]; then
+        printf '%s\n' "$QWEN38_64GB_ABLIT_MODEL"
+    elif [[ -f "$QWEN38_32GB_ABLIT_MODEL" ]]; then
+        printf '%s\n' "$QWEN38_32GB_ABLIT_MODEL"
+    elif [[ -f "$VQ3_MODEL" ]]; then
+        printf '%s\n' "$VQ3_MODEL"
+    elif [[ -f "$NEMO_MAXQ_16GB_MODEL" ]]; then
+        printf '%s\n' "$NEMO_MAXQ_16GB_MODEL"
+    elif [[ -f "$NEMOTRON_ABLIT_MODEL" ]]; then
+        printf '%s\n' "$NEMOTRON_ABLIT_MODEL"
     elif [[ -f "$DSV4_MAXQ_MODEL" ]]; then
         printf '%s\n' "$DSV4_MAXQ_MODEL"
     elif [[ -f "$DSV4_VQ3_MODEL" ]]; then
@@ -85,17 +106,13 @@ resolve_default_model() {
         printf '%s\n' "$DSV4_FRACTAL_MODEL"
     elif [[ -f "$DSV4_ABLIT_MODEL" ]]; then
         printf '%s\n' "$DSV4_ABLIT_MODEL"
-    elif [[ -f "$VQ3_MODEL" ]]; then
-        printf '%s\n' "$VQ3_MODEL"
     elif [[ -f "$FRACTAL_MODEL" ]]; then
         printf '%s\n' "$FRACTAL_MODEL"
-    elif [[ -f "$NEMOTRON_ABLIT_MODEL" ]]; then
-        printf '%s\n' "$NEMOTRON_ABLIT_MODEL"
     else
-        printf '%s\n' "$Q4_MODEL"
+        printf '%s\n' "$QWEN38_32GB_MODEL"
     fi
 }
-DEFAULT_MODEL="$(resolve_default_model || printf '%s\n' "$Q4_MODEL")"
+DEFAULT_MODEL="$(resolve_default_model || printf '%s\n' "$QWEN38_32GB_MODEL")"
 
 BOLD="\033[1m"
 GREEN="\033[92m"
@@ -201,9 +218,13 @@ cmd_start() {
                 elif [[ -f "$model" ]]; then
                     mac_model_env="$model"
                 fi
+                local mac_rc_env="${RC_TABLES_DIR:-}"
+                if [[ -n "$mac_model_env" && "$(basename "$mac_model_env")" != *[Nn]emotron* ]]; then
+                    mac_rc_env="/nonexistent"
+                fi
                 if ! is_port_up "$SERVER_PORT" "$SERVER_HOST"; then
                     if [[ -n "$mac_model_env" ]]; then
-                        MODEL="$mac_model_env" PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
+                        RC_TABLES_DIR="${mac_rc_env:-/nonexistent}" MODEL="$mac_model_env" PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
                     else
                         PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
                     fi
@@ -247,7 +268,7 @@ cmd_start() {
 
     if [[ ! -f "$model" ]]; then
         echo -e "${YELLOW}[!] Model file not found at: ${model}${RESET}"
-        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the engine & choose your GGUF model (DeepSeek-V4 284B or Nemotron-30B),"
+        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the v3.0 engine & select your RAM tier (16 GB / 32 GB / 64 GB),"
         echo -e "    • Or bring your own GGUF: ${BOLD}./modchip start /path/to/your_model.gguf${RESET}"
         exit 1
     fi
@@ -283,8 +304,12 @@ cmd_start() {
             echo -e "${YELLOW}[!] start_server.sh not found. Running './modchip setup --skip-model --model $model' first...${RESET}"
             "${REPO_ROOT}/install.sh" --skip-model --model "$model"
         fi
-        echo -e "${CYAN}[*] Starting 256K CPU Engine + Stockfish-PVS v2 (M=7) in background...${RESET}"
-        SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
+        local srv_rc_dir="${RC_TABLES_DIR:-${WORKSPACE_DIR}/routecrack}"
+        if [[ "$(basename "$model")" != *[Nn]emotron* ]]; then
+            srv_rc_dir="/nonexistent"
+        fi
+        echo -e "${CYAN}[*] Starting llama-modchip v3.0 Engine ($(basename "$model")) in background...${RESET}"
+        RC_TABLES_DIR="$srv_rc_dir" SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
         echo $! > "$SERVER_PID_FILE"
         if [[ -n "$explicit_model" ]]; then
             printf '%s\n' "$model" > "$DEFAULT_MODEL_FILE"
@@ -351,7 +376,7 @@ cmd_start() {
 
     local probe_server_host="$SERVER_HOST"
     [[ "$probe_server_host" == "0.0.0.0" ]] && probe_server_host="127.0.0.1"
-    echo -ne "${CYAN}[*] Waiting for model weights to load & AVX-512/AVX2 repacking (logs: workspace/logs/server.log)...${RESET}"
+    echo -ne "${CYAN}[*] Waiting for model weights to map & AVX-512/AVX2 repacking (logs: workspace/logs/server.log)...${RESET}"
     local ready=0
     local srv_pid=""
     [[ -f "$SERVER_PID_FILE" ]] && srv_pid="$(cat "$SERVER_PID_FILE" 2>/dev/null || true)"
@@ -378,7 +403,7 @@ cmd_start() {
     fi
 
     echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${GREEN}║    llama-modchip v2.5.5 is LIVE — Choose how you want to interact:           ║${RESET}"
+    echo -e "${BOLD}${GREEN}║    llama-modchip v3.0 is LIVE — Choose how you want to interact:             ║${RESET}"
     echo -e "${BOLD}${GREEN}╠══════════════════════════════════════════════════════════════════════════════╣${RESET}"
     echo -e "  🌐 ${BOLD}Live Web Chat & Telemetry HUD${RESET} : ${CYAN}http://${GATEWAY_HOST}:${GATEWAY_PORT}${RESET}"
     echo -e "  💬 ${BOLD}Interactive Terminal Chat${RESET}     : ${GREEN}./modchip chat${RESET}"
@@ -408,7 +433,7 @@ cmd_stop() {
     esc_repo="$(printf '%s' "$REPO_ROOT" | sed 's/[][\.*^$+?(){}|]/\\&/g')"
     local esc_ws
     esc_ws="$(printf '%s' "$WORKSPACE_DIR" | sed 's/[][\.*^$+?(){}|]/\\&/g')"
-    pkill -u "$(id -u)" -f "${esc_ws}/bin/llama-server-nemotron" 2>/dev/null && stopped=1 || true
+    pkill -u "$(id -u)" -f "${esc_ws}/bin/llama-server" 2>/dev/null && stopped=1 || true
     pkill -u "$(id -u)" -f "(^|/)[Pp]ython[0-9.]* .*${esc_repo}/gateway/sse_gateway\.py" 2>/dev/null && stopped=1 || true
     if [[ "${#pids_to_wait[@]}" -gt 0 ]]; then
         for _ in $(seq 1 20); do
@@ -467,7 +492,7 @@ ensure_ready_and_running() {
         return 0
     fi
     if [[ ! -f "$DEFAULT_MODEL" ]] || [[ ! -x "${WORKSPACE_DIR}/bin/llama-server-nemotron" ]]; then
-        echo -e "${CYAN}[*] First run detected — building patched engine & downloading model automatically...${RESET}"
+        echo -e "${CYAN}[*] First run detected — installing v3.0 engine & downloading model automatically...${RESET}"
         "${REPO_ROOT}/install.sh"
         DEFAULT_MODEL="$(resolve_default_model)"
     fi
@@ -504,20 +529,16 @@ cmd_eval() {
 }
 
 cmd_quantize() {
-    if [[ "${1:-}" == "--vq3-nemotron" ]]; then
-        shift
-        exec python3 "${REPO_ROOT}/scripts/build_nemotron_vq3.py" "$@"
-    elif [[ "${1:-}" == "--ablit-nemotron" ]]; then
-        shift
-        exec python3 "${REPO_ROOT}/scripts/build_nemotron_abliterated_vq3.py" "$@"
-    elif [[ "${1:-}" == "--vq3-dsv4" ]]; then
-        shift
-        exec python3 "${REPO_ROOT}/scripts/build_dsv4_vq3.py" "$@"
-    elif [[ "${1:-}" == "--maxq-dsv4" ]]; then
-        shift
-        exec python3 "${REPO_ROOT}/scripts/build_dsv4_maxq_singlepass.py" "$@"
+    local qbin="${WORKSPACE_DIR}/bin/llama-quantize"
+    if [[ ! -x "$qbin" && -x "${WORKSPACE_DIR}/bin/llama-quantize-modchip-linux-x86_64" ]]; then
+        qbin="${WORKSPACE_DIR}/bin/llama-quantize-modchip-linux-x86_64"
     fi
-    exec "${REPO_ROOT}/scripts/build_fractal_moe_gguf.sh" "$@"
+    if [[ $# -gt 0 && -x "$qbin" ]]; then
+        exec "$qbin" "$@"
+    fi
+    echo -e "${CYAN}[i] Pre-quantized MaxQ v3.0 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
+    echo -e "    Run ${BOLD}./modchip setup${RESET} to download & verify any Aligned or Abliterated checkpoint."
+    echo -e "    For standard GGUF quantization via llama-quantize, install binaries with ${BOLD}./modchip download-bin${RESET}."
 }
 
 cmd_claude() {
@@ -527,7 +548,7 @@ cmd_claude() {
         ep="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
     fi
     export ANTHROPIC_BASE_URL="${ep}"
-    export ANTHROPIC_API_KEY="${VEX_API_KEY:-not-needed}"
+    export ANTHROPIC_API_KEY="${MODCHIP_API_KEY:-not-needed}"
     export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
     export DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
     unset ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
@@ -536,30 +557,47 @@ cmd_claude() {
 
     local raw_model model_id model_banner
     raw_model="$(curl -sf --max-time 1 "${ep}/v1/models" 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); m=(d.get("data") or d.get("models") or [{}])[0]; print(m.get("id") or m.get("name") or "")' 2>/dev/null || true)"
-    if [[ "$raw_model" == *[Dd]eep[Ss]eek* ]]; then
+    if [[ "$raw_model" == *[Qq]wen3.8* || "$raw_model" == *[Qq]wen38* ]]; then
+        if [[ "$raw_model" == *32[Gg][Bb]* && "$raw_model" == *[Aa]blit* ]]; then
+            model_id="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (80B+PLE · 24.98 GiB + Lazy PLE · Draft-MTP)"
+        elif [[ "$raw_model" == *32[Gg][Bb]* ]]; then
+            model_id="Qwen3.8-Flash-Next-MaxQ-32GB"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (80B+PLE · 24.98 GiB + Lazy PLE · Draft-MTP)"
+        elif [[ "$raw_model" == *[Aa]blit* ]]; then
+            model_id="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (80B+PLE · 53.99 GiB Full-RAM · Draft-MTP)"
+        else
+            model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (80B+PLE · 53.99 GiB Full-RAM · Draft-MTP)"
+        fi
+    elif [[ "$raw_model" == *[Dd]eep[Ss]eek* ]]; then
         if [[ "$raw_model" == *[Mm]ax[Qq]*[Vv]4* ]]; then
             model_id="DeepSeek-V4-Flash-0731-MaxQ-v4-284B"
             model_banner="DeepSeek-V4-Flash-0731-MaxQ-v4 (284B-A13B MoE · 100% Donor-Free ConeCollapse · 64GB CPU/Metal/CUDA)"
         elif [[ "$raw_model" == *[Mm]ax[Qq]* ]]; then
             model_id="DeepSeek-V4-Flash-0731-MaxQ-Fractal-284B"
-            model_banner="DeepSeek-V4-Flash-0731-MaxQ-Fractal (284B-A13B MoE · Single-Pass Q6_K + Fractal-64 · 64GB CPU)"
+            model_banner="DeepSeek-V4-Flash-0731-MaxQ-Fractal (284B-A13B MoE · Legacy v2.5 · 64GB CPU)"
         elif [[ "$raw_model" == *[Aa]bliterated* ]]; then
             model_id="DeepSeek-V4-Flash-0731-Abliterated-Fractal-284B"
-            model_banner="DeepSeek-V4-Flash-0731-Abliterated-Fractal (284B-A13B MoE · Single-Pass Q6_K + Fractal-64 · 64GB CPU)"
+            model_banner="DeepSeek-V4-Flash-0731-Abliterated-Fractal (284B-A13B MoE · Legacy v2.5 · 64GB CPU)"
         elif [[ "$raw_model" == *[Vv][Qq]3* ]]; then
             model_id="DeepSeek-V4-Flash-0731-VQ3-284B"
-            model_banner="DeepSeek-V4-Flash-0731-VQ3 (284B-A13B MoE · VQ3-64 + Fractal-64 · 64GB CPU)"
+            model_banner="DeepSeek-V4-Flash-0731-VQ3 (284B-A13B MoE · Legacy v2.5 · 64GB CPU)"
         else
             model_id="DeepSeek-V4-Flash-0731-Fractal-284B"
-            model_banner="DeepSeek-V4-Flash-0731-Fractal (284B-A13B MoE · Fractal-64 · 64GB CPU)"
+            model_banner="DeepSeek-V4-Flash-0731-Fractal (284B-A13B MoE · Legacy v2.5 · 64GB CPU)"
         fi
     elif [[ "$raw_model" == *[Nn]emotron* ]]; then
         if [[ "$raw_model" == *[Aa]bliterated* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · VQ3-64 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.0 VQ3-64 · 256K CPU)"
+        elif [[ "$raw_model" == *[Mm]ax[Qq]*16* ]]; then
+            model_id="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B-A3B Hybrid Mamba-2 · Standard ggml · CPU/Metal/CUDA)"
         elif [[ "$raw_model" == *[Vv][Qq]3* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · VQ3-64 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.0 VQ3-64 · 256K CPU)"
         else
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64"
             model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B-A3B Hybrid Mamba-2 · 256K CPU)"
@@ -568,8 +606,8 @@ cmd_claude() {
         model_id="$(basename "$raw_model" .gguf | sed -E 's/-00001-of-[0-9]+$//')"
         model_banner="$model_id"
     else
-        model_id="DeepSeek-V4-Flash-0731-MaxQ-Fractal-284B"
-        model_banner="DeepSeek-V4-Flash-0731-MaxQ-Fractal (284B-A13B MoE · 64GB CPU)"
+        model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
+        model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (80B+PLE · 64GB CPU)"
     fi
 
     local extra_flags=(
@@ -597,21 +635,27 @@ cmd_download_bin() {
     local flags=""
     [[ -r /proc/cpuinfo ]] && flags="$(grep -m1 -E '^flags' /proc/cpuinfo || true)"
     local isa_suffix="avx2"
-    local srv_sha256="a02b27be012edf365f51a1a94fe28640ed8f31cb4b2ed1b793e77eb67473f5e5"
-    local cli_sha256="4d6722a92fd93da7eab75cf4dd82727a3ae788f40cbafb6f415d3cb96ef3bcdf"
-    if echo "$flags" | grep -q "avx512f" && echo "$flags" | grep -qE "avx512_?vbmi"; then
+    local srv_sha256="0f0c07f97a98d8aeb9a012264fdeff5a787d2104a2afb122052bfe0a21c2d1a9"
+    local cli_sha256="49a918206afe371d16ab14fd66d9cc87e35c7f8c0471c2cc13c759f2e0350d03"
+    local bnc_sha256="fa8a055799bb2f65df8c6077f1377b81bfeda4efe3851639d05c1b44c3fa45e8"
+    local ppl_sha256="f77c3581d37fa6920daec6938abc5767675b430130eed03ec05e68c6e6d4b624"
+    local qnt_sha256="521d9bf53f888c71e158732cd2c0b14e80a5e3d2005aed5f7a3e204ebfba9bbb"
+    if echo "$flags" | grep -q "avx512f" && echo "$flags" | grep -qE "avx512_?vbmi" && echo "$flags" | grep -qE "avx512_?vnni"; then
         isa_suffix="avx512"
-        srv_sha256="631a9a9b8da286ef0827b779c863d2b93347bf69186245c86c1c90a7d463f579"
-        cli_sha256="376f73ef93a13ba33164a1f1995f1a0e6c74e19af0d47b05fc72c975cc4c4253"
+        srv_sha256="54af3232375ede820f91143c106a594c83b815a3dca66fe98ab08bcb8b63d4f0"
+        cli_sha256="531d870988dcc580322341d2bbd7f0cf6b6cc3b3376a2e86d092a021f7cddba2"
+        bnc_sha256="7ad8253fb9c3a779be58122adc51ea9786bb391acb49d3cbfa6280cedb01e9d8"
+        ppl_sha256="003f452008972fb8696f7ea2800cfede360ba2a2c32f0a605fba2463b66bcadb"
+        qnt_sha256="befa4842fa09a061d4fe3376d226ed4ad2dafa8c149db10c06b37f85e59e3f94"
     elif ! echo "$flags" | grep -q "avx2"; then
-        echo -e "${YELLOW}[!] CPU lacks AVX2; run './modchip setup' to compile scalar/AVX1 fallback from source.${RESET}"
+        echo -e "${YELLOW}[!] CPU lacks AVX2; run './modchip setup --source' to compile scalar/AVX1 fallback from source.${RESET}"
         exit 1
     fi
     local srv_asset="llama-server-modchip-linux-x86_64-${isa_suffix}"
     local cli_asset="llama-cli-modchip-linux-x86_64-${isa_suffix}"
-    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v2.5.5"
-    local fallback_url="https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF/resolve/48356a120e78c01e82f425a74380f46f3925fb9c"
-    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable ${srv_asset} & ${cli_asset}...${RESET}"
+    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.0"
+    local fallback_url="https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main"
+    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.0 ${srv_asset} & ${cli_asset} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
     curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${base_url}/${srv_asset}" \
         || curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${fallback_url}/${srv_asset}"
     local actual_srv_sha
@@ -622,11 +666,7 @@ cmd_download_bin() {
         exit 1
     fi
     chmod +x "${dest_dir}/${srv_asset}.part"
-    local smoke_err=""
-    if ! smoke_err="$("${dest_dir}/${srv_asset}.part" --version 2>&1)"; then
-        if [[ "$smoke_err" == *"libgomp.so.1"* ]]; then
-            echo -e "${YELLOW}[!] Missing OpenMP runtime (libgomp.so.1). Install it via 'sudo apt-get install -y libgomp1' (Debian/Ubuntu) or 'sudo dnf install -y libgomp' (Fedora/RHEL).${RESET}" >&2
-        fi
+    if ! "${dest_dir}/${srv_asset}.part" --version >/dev/null 2>&1; then
         echo -e "${YELLOW}[!] Downloaded ${srv_asset} failed --version check on this host; run './modchip setup --source' to compile natively.${RESET}" >&2
         rm -f "${dest_dir}/${srv_asset}.part"
         exit 1
@@ -634,19 +674,34 @@ cmd_download_bin() {
     mv -f "${dest_dir}/${srv_asset}.part" "${dest_dir}/${srv_asset}"
     ln -sf "${srv_asset}" "${dest_dir}/llama-server-modchip-linux-x86_64"
     cp -f "${dest_dir}/${srv_asset}" "${WORKSPACE_DIR}/bin/llama-server-nemotron" 2>/dev/null || true
-    if curl -fL --progress-bar -o "${dest_dir}/${cli_asset}.part" "${base_url}/${cli_asset}" \
-        || curl -fL --progress-bar -o "${dest_dir}/${cli_asset}.part" "${fallback_url}/${cli_asset}"; then
-        local actual_cli_sha
-        actual_cli_sha="$(compute_sha256 "${dest_dir}/${cli_asset}.part")"
-        if [[ "$actual_cli_sha" == "$cli_sha256" ]]; then
-            chmod +x "${dest_dir}/${cli_asset}.part"
-            mv -f "${dest_dir}/${cli_asset}.part" "${dest_dir}/${cli_asset}"
-            ln -sf "${cli_asset}" "${dest_dir}/llama-cli-modchip-linux-x86_64"
-        else
-            rm -f "${dest_dir}/${cli_asset}.part"
+
+    local pair
+    for pair in \
+        "${cli_asset}:${cli_sha256}:llama-cli-modchip-linux-x86_64" \
+        "llama-bench-modchip-linux-x86_64-${isa_suffix}:${bnc_sha256}:llama-bench" \
+        "llama-perplexity-modchip-linux-x86_64-${isa_suffix}:${ppl_sha256}:llama-perplexity" \
+        "llama-quantize-modchip-linux-x86_64-${isa_suffix}:${qnt_sha256}:llama-quantize"; do
+        local asset_name="${pair%%:*}"
+        local rest="${pair#*:}"
+        local exp_sha="${rest%%:*}"
+        local link_name="${rest#*:}"
+        if [[ "$link_name" != "llama-cli-modchip-linux-x86_64" && "${MODCHIP_ALL_TOOLS:-0}" != "1" ]]; then
+            continue
         fi
-    fi
-    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (SHA-256 + --version OK)${RESET}"
+        if curl -fL --progress-bar -o "${dest_dir}/${asset_name}.part" "${base_url}/${asset_name}" \
+            || curl -fL --progress-bar -o "${dest_dir}/${asset_name}.part" "${fallback_url}/${asset_name}"; then
+            local got_sha
+            got_sha="$(compute_sha256 "${dest_dir}/${asset_name}.part")"
+            if [[ "$got_sha" == "$exp_sha" ]]; then
+                chmod +x "${dest_dir}/${asset_name}.part"
+                mv -f "${dest_dir}/${asset_name}.part" "${dest_dir}/${asset_name}"
+                ln -sf "${asset_name}" "${dest_dir}/${link_name}"
+            else
+                rm -f "${dest_dir}/${asset_name}.part"
+            fi
+        fi
+    done
+    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.0 SHA-256 + --version OK)${RESET}"
 }
 
 cmd_tui() {
@@ -670,7 +725,7 @@ case "$SUBCMD" in
     chat|ask)        cmd_chat "$@" ;;
     bench|benchmark) cmd_bench "$@" ;;
     eval|gate)       cmd_eval "$@" ;;
-    quantize|fractal) cmd_quantize "$@" ;;
+    quantize)        cmd_quantize "$@" ;;
     web|ui)          cmd_web "$@" ;;
     claude)          cmd_claude "$@" ;;
     status|info)     cmd_status ;;

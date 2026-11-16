@@ -530,7 +530,14 @@ struct RCPPM {
                         break;
                     }
                     if (e.ctx_hash == h) {
-                        // Existing entry — update counts
+                        // Existing entry — update counts (halve on uint16_t saturation)
+                        if (e.total_cnt == 65535) {
+                            e.total_cnt = 0;
+                            for (int q = 0; q < e.n_preds; q++) {
+                                e.counts[q] = (uint16_t) ((e.counts[q] + 1) >> 1);
+                                e.total_cnt += e.counts[q];
+                            }
+                        }
                         e.total_cnt++;
                         // Find this token in top-K
                         bool found = false;
@@ -655,6 +662,10 @@ struct RCSkipgram {
                     break;
                 }
                 if (table[idx].hash == h) {
+                    if (table[idx].total == 65535) {
+                        table[idx].total = (uint16_t) ((table[idx].total + 1) >> 1);
+                        table[idx].hits  = (uint16_t) ((table[idx].hits  + 1) >> 1);
+                    }
                     table[idx].total++;
                     if (tokens[j] == table[idx].pred) table[idx].hits++;
                     break;
@@ -819,7 +830,9 @@ struct RCCodebook {
                         break;
                     }
                     if (table[idx].hash == h) {
-                        table[idx].count++;
+                        if (table[idx].count < 65535) {
+                            table[idx].count++;
+                        }
                         break;
                     }
                 }
