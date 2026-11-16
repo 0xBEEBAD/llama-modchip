@@ -291,18 +291,25 @@ if ($Bench) {
 }
 
 Write-Host ""
-Write-Host ("  Context   : {0} tokens (KV {1}, flash-attn)" -f $Ctx, $KvType)
-Write-Host ("  MoE Top-K : {0} of 6 routed experts (min weight {1})" -f $MoeTopK, $MoeMinW)
-Write-Host ("  Spec      : {0}" -f $(if ($NoSpec) { "off" } else { "n-gram simple (n=4, m=7)" }))
-if ($cfgPath) { Write-Host ("  Live cfg  : {0}" -f $cfgPath) }
+Write-Host ("  Context   : {0} tokens (KV {1}/{2}, flash-attn)" -f $Ctx, $KvType, $kvTypeV)
+if ($isQwen38) {
+    Write-Host "  MoE Top-K : 10 of 512 routed experts + 1 shared expert"
+} elseif ($isNemotron) {
+    Write-Host "  MoE Top-K : 6 of 128 routed experts + 2 shared experts"
+} else {
+    Write-Host ("  MoE Top-K : {0} of 6 routed experts (min weight {1})" -f $MoeTopK, $MoeMinW)
+}
+$specBanner = if ($NoSpec) { "off" } elseif ($isQwen38) { "draft-mtp (NextN blk.48)" } else { "n-gram simple (n=4, m=7)" }
+Write-Host ("  Spec      : {0}" -f $specBanner)
+if ($cfgPath -and -not $isQwen38 -and -not $isNemotron) { Write-Host ("  Live cfg  : {0}" -f $cfgPath) }
 Write-Host ("  Offload   : {0}" -f $(if ($NGpuLayers -gt 0) { "-ngl $NGpuLayers, --n-cpu-moe $NCpuMoe (FRACTAL_64/VQ3_64 pinned to CPU)" } else { "CPU only" }))
-if ($NGpuLayers -gt 0) {
+if ($NGpuLayers -gt 0 -and -not $isQwen38) {
     Write-Host "  [!] Measured on this machine: hybrid is SLOWER for this model (2.7-3.4 tok/s vs 7.4-8.1" -ForegroundColor Yellow
     Write-Host "      CPU-only). FRACTAL_64/VQ3_64 tensors run on CPU, so every layer round-trips PCIe." -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host ("  -> Web chat UI : http://127.0.0.1:{0}" -f $Port) -ForegroundColor Yellow
-Write-Host ("  -> OpenAI API  : http://127.0.0.1:{0}/v1  (model: deepseek-v4-flash)" -f $Port) -ForegroundColor Yellow
+Write-Host ("  -> OpenAI API  : http://127.0.0.1:{0}/v1  (model: {1})" -f $Port, $modelAlias) -ForegroundColor Yellow
 Write-Host "  Press CTRL+C in this window to stop the server." -ForegroundColor DarkGray
 Write-Host ""
 

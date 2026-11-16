@@ -60,6 +60,7 @@ fi
 
 echo "[run-dsv4] profile=$PROFILE cpu_expert_layers=$cpu_layers ctx=$CTX threads=$THREADS port=$PORT" >&2
 echo "[run-dsv4] if the log shows kIOGPUCommandBufferCallbackErrorOutOfMemory, output is invalid: stop and use PROFILE=nosudo" >&2
+export RC_TABLES_DIR="/nonexistent"
 exec "$LLAMA_DIR/bin/llama-server" \
     --model "$MODEL" \
     --alias deepseek-v4-flash \

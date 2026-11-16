@@ -219,12 +219,15 @@ cmd_start() {
                     mac_model_env="$model"
                 fi
                 local mac_rc_env="${RC_TABLES_DIR:-}"
-                if [[ -n "$mac_model_env" && "$(basename "$mac_model_env")" != *[Nn]emotron* ]]; then
+                local mac_check="${mac_model_env:-$model}"
+                if [[ -z "$mac_check" || "$(basename "$mac_check")" != *[Nn]emotron* ]]; then
                     mac_rc_env="/nonexistent"
                 fi
                 if ! is_port_up "$SERVER_PORT" "$SERVER_HOST"; then
                     if [[ -n "$mac_model_env" ]]; then
                         RC_TABLES_DIR="${mac_rc_env:-/nonexistent}" MODEL="$mac_model_env" PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
+                    elif [[ -n "$mac_rc_env" ]]; then
+                        RC_TABLES_DIR="$mac_rc_env" PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
                     else
                         PORT="$SERVER_PORT" nohup "${REPO_ROOT}/apple-silicon/run-server.sh" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
                     fi
@@ -304,12 +307,8 @@ cmd_start() {
             echo -e "${YELLOW}[!] start_server.sh not found. Running './modchip setup --skip-model --model $model' first...${RESET}"
             "${REPO_ROOT}/install.sh" --skip-model --model "$model"
         fi
-        local srv_rc_dir="${RC_TABLES_DIR:-${WORKSPACE_DIR}/routecrack}"
-        if [[ "$(basename "$model")" != *[Nn]emotron* ]]; then
-            srv_rc_dir="/nonexistent"
-        fi
         echo -e "${CYAN}[*] Starting llama-modchip v3.0 Engine ($(basename "$model")) in background...${RESET}"
-        RC_TABLES_DIR="$srv_rc_dir" SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
+        SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
         echo $! > "$SERVER_PID_FILE"
         if [[ -n "$explicit_model" ]]; then
             printf '%s\n' "$model" > "$DEFAULT_MODEL_FILE"
@@ -560,16 +559,16 @@ cmd_claude() {
     if [[ "$raw_model" == *[Qq]wen3.8* || "$raw_model" == *[Qq]wen38* ]]; then
         if [[ "$raw_model" == *32[Gg][Bb]* && "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (80B+PLE · 24.98 GiB + Lazy PLE · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · Draft-MTP)"
         elif [[ "$raw_model" == *32[Gg][Bb]* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (80B+PLE · 24.98 GiB + Lazy PLE · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB + Lazy PLE · Draft-MTP)"
         elif [[ "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (80B+PLE · 53.99 GiB Full-RAM · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · Draft-MTP)"
         else
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (80B+PLE · 53.99 GiB Full-RAM · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB Full-RAM · Draft-MTP)"
         fi
     elif [[ "$raw_model" == *[Dd]eep[Ss]eek* ]]; then
         if [[ "$raw_model" == *[Mm]ax[Qq]*[Vv]4* ]]; then
@@ -607,7 +606,7 @@ cmd_claude() {
         model_banner="$model_id"
     else
         model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
-        model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (80B+PLE · 64GB CPU)"
+        model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 64GB CPU)"
     fi
 
     local extra_flags=(

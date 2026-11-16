@@ -10,30 +10,15 @@ changes do not apply, and the limit is the size of the memory, not the bandwidth
 measured below, stock llama.cpp is sufficient and no patch is necessary. This does not hold for the
 Fractal-64 (`Q2_0`) GGUFs, see the next section.
 
-## Fractal-64 (`Q2_0`) GGUFs
+## Custom `FRACTAL_64` / `VQ3_64` & Unified `v3.0` Engine
 
-A Fractal-64 GGUF (for example `NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf`) stores `Q2_0` tensors in a
-30-byte block of 64 weights. Stock llama.cpp sizes `Q2_0` with an 18-byte block and cannot read the file:
-Homebrew llama.cpp (ggml 0.19.0) exits with `gguf_init_from_reader: tensor 'blk.1.ffn_down_shexp.weight' has
-offset 899308800, expected 779574528`. Build the patched engine instead:
+In **`llama-modchip v3.0`**, flagship `Qwen3.8-Flash-Next-MaxQ-64GB`, `Qwen3.8-Flash-Next-MaxQ-32GB`, `DeepSeek-V4-Flash-0731-MaxQ-v4`, and `NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB` use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched). Checkpoints using custom `Fractal-64` (`GGML_TYPE_FRACTAL_64 = 44`, `30 B / 64 W`) or `LUT-VQ3-64` (`GGML_TYPE_VQ3_64 = 45`, `24 B / 64 W`) require the unified `v3.0` patched engine:
 
 ```bash
 BUILD_TESTS=1 ./apple-silicon/setup.sh      # BUILD_TESTS=1 also builds test-quantize-fns and test-backend-ops
 ```
 
-`scripts/build_zen5_llama.sh` applies `patches/zen5-nemotron-256k-optimizations.patch`, `patches/lut-vq3-64-avx512-vbmi.patch` (`GGML_TYPE_VQ3_0 = 43` with portable C fallback), and, on macOS, the patches in
-`patches/nemotron-apple-silicon/`: a faster single-row (decode) `Q2_0` Metal kernel (a 4-thread block layout
-plus a 512-byte threadgroup pair-lookup table for the codebook, [PR #24](https://github.com/synchopate/llama-modchip/pull/24)), the `Q2_0` block size in
-`gguf-py`, and tighter `Q2_0` tests (including a random-block dot product test that also covers the armv8.0 NEON
-branch when built with `-DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8-a`, and `test-backend-ops` cases with random
-raw `Q2_0` blocks). Note that on Apple Silicon Macs, prefer the `Fractal-64` (`Q2_0 = 42`) GGUFs over `LUT-VQ3-64` (`VQ3_0 = 43`), as `Q2_0` runs natively on Metal whereas `VQ3_0` targets x86-64 AVX-512 VBMI CPUs. On other systems these macOS patches are not applied, so a Linux build is unchanged; set
-`APPLE_SILICON_PATCHES=1` to apply them anyway or `=0` to leave them out on a Mac. If an earlier run was interrupted and left only part of the series
-applied, the script stops without changing anything; `RESET_LLAMA_TREE=1` discards the uncommitted changes in the
-llama.cpp clone and applies everything again. The patch files have no mail
-headers: they are meant for `git apply` (as the script does), not `git am`. Check a build, from the llama.cpp
-directory, with `build/bin/test-quantize-fns` and `build/bin/test-backend-ops test -b MTL0 -p q2_0`. These patches
-only change the `Q2_0` Metal kernel, `gguf-py` and the tests; the other backends and CPU architectures were not
-audited. They apply to the Nemotron patch only, not to the DeepSeek-V4 patch stack in `patches/apple-silicon/`.
+`scripts/build_zen5_llama.sh` clones `ggml-org/llama.cpp` at pinned commit **`de32b268c`** (`de32b268c4ad55d45f3b7b16c029f4e077f4ba74`) and applies the single unified [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch), which includes ARM64 NEON SDOT kernels, Metal `FRACTAL_64` shaders ([PR #24](https://github.com/synchopate/llama-modchip/pull/24)), Metal host-pointer tensor-run mapping, `qwen4exp` 3D MoE zero-copy `mmap` preservation, and portable C fallbacks for `VQ3_64 = 45`. On Apple Silicon Macs, prefer the 100%-standard-`ggml` `MaxQ` checkpoints (`Qwen3.8-MaxQ-64GB/32GB`, `DeepSeek-V4-MaxQ-v4`, `Nemotron-MaxQ-16GB`) or `FRACTAL_64` over `VQ3_64` (which targets x86-64 AVX-512 VBMI CPUs). Verify a local build with `build/bin/test-quantize-fns` and `build/bin/test-backend-ops`.
 
 ## Results
 
@@ -245,16 +230,16 @@ Contributed by Bobby Grayson ([`@notactuallytreyanastasio`](https://github.com/n
 - **`llama-server` (Realistic Workloads)**: **`20.7 – 23.6 tok/s`** served with **`0` swapouts** (`code_edit`: 20.7 t/s, `code_new`: 23.3 t/s, `free_text`: 23.6 t/s).
 - Detailed report and profiling data: [`apple-silicon/results/dsv4-m5max.md`](results/dsv4-m5max.md).
 
-### The Five Engineering Fixes for Apple Silicon
-1. **Pinned Upstream Commit**: `patches/dsv4-64gb-cpu.patch` matches llama.cpp commit `d2f83055` (2026-08-10, recovered from the 18 pre-image blob hashes in the patch). Automated worktree setup is handled in [`build-dsv4-engine.sh`](build-dsv4-engine.sh).
-2. **Fractal-64 Q2_0 NEON & Metal Kernels**: `patches/apple-silicon/0001-fractal64-q2_0-arm64-metal.patch` rewrites `block_q2_0` (30 bytes: `d`, `scales[4]`, `qs[16]`, `qh[8]`, 3.75 bpw) for ARM64 NEON with dotprod (`vqtbl1q_s8` + `vdotq_s32`) and Metal shaders, resolving undefined symbol link failures off x86 and passing 45/45 `test-backend-ops` MUL_MAT tests (with the scalar reference validated in `test-quantize-fns`).
-3. **Metal Host-Pointer Run Mapping**: `patches/apple-silicon/0002-metal-map-tensor-runs.patch` wraps only contiguous runs of GPU-resident tensors in Metal host-pointer buffers (`newBufferWithBytesNoCopy`, merging gaps < 16 MiB) instead of wrapping the entire mapped file. This prevents CPU-routed experts from exhausting Metal's recommended max working set limit and eliminates `kIOGPUCommandBufferCallbackErrorOutOfMemory`.
-4. **Metal Register Unpack & Computed LUT**: `patches/apple-silicon/0003-metal-q2_0-register-unpack.patch` unpacks 30-byte blocks using 32-bit word loads via ushort pairs and computes `kvalues_fractal3` directly to avoid SIMD warp-divergent constant memory stalls.
+### The Five Engineering Fixes for Apple Silicon (Unified in `patches/llama-modchip-v3.0.patch`)
+1. **Pinned Upstream Commit**: Unified `v3.0` builds against `ggml-org/llama.cpp` commit **`de32b268c`** (`de32b268c4ad55d45f3b7b16c029f4e077f4ba74`) with [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch). Automated worktree setup is handled in [`build-dsv4-engine.sh`](build-dsv4-engine.sh).
+2. **`FRACTAL_64` NEON & Metal Kernels**: Implements 30-byte `block_fractal64` (`GGML_TYPE_FRACTAL_64 = 44`: `d`, `scales[4]`, `qs[16]`, `qh[8]`, `3.75 bpw`) for ARM64 NEON with dotprod (`vqtbl1q_s8` + `vdotq_s32`) and Metal shaders alongside untouched upstream `Q1_0 = 41` / `Q2_0 = 42` / `F8_E4M3 = 43` (note: `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB` uses 100% standard `ggml` types).
+3. **Metal Host-Pointer Run Mapping**: Wraps only contiguous runs of GPU-resident tensors in Metal host-pointer buffers (`newBufferWithBytesNoCopy`, merging gaps < 16 MiB) instead of wrapping the entire mapped file. This prevents CPU-routed experts from exhausting Metal's recommended max working set limit and eliminates `kIOGPUCommandBufferCallbackErrorOutOfMemory`.
+4. **Metal Register Unpack & Computed LUT**: Unpacks 30-byte `FRACTAL_64` blocks using 32-bit word loads via ushort pairs and computes `kvalues_fractal3` directly to avoid SIMD warp-divergent constant memory stalls.
 5. **Layer Placement Strategy**: Offloading 5 alternating middle pure-`IQ1_S` layers (`blk.(10|12|14|16|18).ffn_.*_exps.=CPU`) to CPU doubles decode speed from 13.6 tok/s (naive sequential `--n-cpu-moe 4`) to **27.0 tok/s** in `llama-bench` (`tg128`).
 
 ### Building and Running
 ```bash
-# 1. Build the engine (clones/worktrees llama.cpp d2f83055 and applies patches)
+# 1. Build the unified v3.0 engine (clones/worktrees llama.cpp de32b268c and applies patches/llama-modchip-v3.0.patch)
 ./apple-silicon/build-dsv4-engine.sh
 
 # 2. Run with fast profile (requires 64 GB Mac + sudo sysctl iogpu.wired_limit_mb=57344)

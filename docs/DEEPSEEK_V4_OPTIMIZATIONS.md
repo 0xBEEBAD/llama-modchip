@@ -120,9 +120,11 @@ $$\mathbf{h} = \text{SiLU}(\mathbf{W}_{\text{gate}} \mathbf{x}) \odot (\mathbf{W
 
 ---
 
-## 5. Shipped 64 GB `0731` Checkpoints (`v2.5.3`): Donor-Free Single-Pass `MaxQ-Fractal` (`56.93 GiB` Aligned Default), `LUT-VQ3-64` (`56.40 GiB`), `Fractal` (`56.57 GiB`), & Opt-In `Abliterated-Fractal`
+## 5. Shipped 64 GB `0731` Checkpoints: `v3.0` Donor-Free `MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`) & Historical `v2.5.x` Series
 
-`v2.5.3` ships four 3-shard `DeepSeek-V4-Flash-0731` checkpoints tailored for 64 GB CPU hosts (`scripts/build_dsv4_maxq_singlepass.py`, `patches/lut-vq3-64-avx512-vbmi.patch`, `scripts/build_dsv4_vq3.py`, [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)):
+In **`v3.0`**, the recommended 64 GB `DeepSeek-V4-Flash-0731` checkpoint is **[`DeepSeek-V4-Flash-0731-MaxQ-v4`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF)** (`57.99 GiB` / `62,270,037,248 B`, `--preset dsv4-maxq`), using **100% standard `ggml` types (`0` custom types)** with `34`-layer `2048 -> 1792` ConeCollapse (`wiki-alt.txt` 51-chunk `PPL = 6.8592`, `KLD = 0.6485`, `Top-1 = 73.28%`; see [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)).
+
+For historical comparison, `v2.5.3` shipped four earlier 3-shard `DeepSeek-V4-Flash-0731` checkpoints (in `v3.0`, custom `Fractal-64` and `LUT-VQ3-64` use zero-collision IDs `GGML_TYPE_FRACTAL_64 = 44` and `GGML_TYPE_VQ3_64 = 45` via [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch)):
 
 - **Safety-Aligned Default — [`DeepSeek-V4-Flash-0731-MaxQ-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,160` B, `57.54–58.13 GiB` `VmRSS`, `./modchip setup` default `dsv4-maxq`):**
   - Donor-free single-pass quantization across all `1,328 / 1,328` weight tensors directly from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe23eabc4c98b48bffcef5a386062`): `174` dense 100%-active bottleneck tensors (`token_embd`, `output`, `43× attn_q_a`, `43× ffn_{gate,up,down}_shexp` -> `173 × Q6_K + 1 × Q8_0`), `317` MLA/Indexer tensors (`Fractal-64`, `GGML_TYPE_Q2_0 = 42`, `3.75 bpw`), and all `129` 3D routed-MoE tensors quantized single-pass with `@antirez`'s `1.5M`-token `routed-moe-ds4-1p5m.dat` (`@ f71f23d552d6`, calibrated `2026-05-12` on April `DeepSeek-V4-Flash` `chat-v2` activations).
@@ -135,9 +137,11 @@ $$\mathbf{h} = \text{SiLU}(\mathbf{W}_{\text{gate}} \mathbf{x}) \odot (\mathbf{W
   - Applies the identical `1,328`-tensor single-pass layout (`--mode abliterated --hf-repo prem-research/DeepSeek-V4-Flash-0731-abliterated --hf-rev 457210de3a9d`) to `prem-research/DeepSeek-V4-Flash-0731-abliterated` (`WikiText-2` `PPL = 11.3944 ± 0.5650`, **`0.0959 / 0.0512 nats` step-0/matched KLD & `90.7%` Top-1 / `99.4%` Top-5 match vs `MaxQ v2.5.3`**, `70.0 / 80` Functional Gate). Requires explicit confirmation (`[y/N]` or `--accept-abliterated`); intended strictly for authorized offline security research and auditing.
 
 ```bash
-# Build shipped conservative 56.40 GiB Hybrid (default) or 56.07 GiB aggressive ablation:
-python3 scripts/build_dsv4_vq3.py --src-dir /path/to/Fractal-shards --dst-dir /path/to/VQ3-shards
-python3 scripts/build_dsv4_vq3.py --src-dir /path/to/Fractal-shards --dst-dir /path/to/VQ3-aggressive --aggressive
+# Install & SHA-256 verify the recommended v3.0 100%-standard-ggml DeepSeek-V4-Flash MaxQ-v4 checkpoint (57.99 GiB):
+./install.sh --preset dsv4-maxq --yes
+
+# Or build the unified llama-modchip v3.0 engine from source (llama.cpp de32b268c + patches/llama-modchip-v3.0.patch):
+BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
 ```
 
 ---

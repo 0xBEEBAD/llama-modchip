@@ -461,6 +461,11 @@ if ($nCpuMoe -gt 0) {
     $serverArgs += @("--n-cpu-moe", "$nCpuMoe")
 }
 
+# Isolate RouteCrack tables: never load Nemotron 131K tables when serving non-Nemotron models
+if ($selectedModel.FileName -notmatch '(?i)nemotron') {
+    $env:RC_TABLES_DIR = "/nonexistent"
+}
+
 # Configura il controllo MoE runtime L2-quadrature (per-user $LOCALAPPDATA\llama-modchip\dsv4_moe_cfg.bin via DSV4_MOE_CFG_PATH + LLAMA_MOE_TOP_K per Qwen/Nemotron; NON esportare DSV4_MOE_TOPK)
 Remove-Item Env:DSV4_MOE_TOPK -ErrorAction SilentlyContinue
 if ($MoeTopK -lt 6 -or $MoeMinW -gt 0.0) {

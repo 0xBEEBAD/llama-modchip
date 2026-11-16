@@ -142,9 +142,9 @@ def detect_active_model(base_url: str) -> Tuple[str, str, str]:
     if "qwen3.8" in low or "qwen38" in low or "qwen4exp" in low:
         ablit_tag = " · Abliterated" if "ablit" in low else ""
         if "32gb" in low:
-            display = f"{base_clean} (80B+PLE / 512 Experts · 24.98 GiB Trunk + Lazy PLE · NextN MTP{ablit_tag})"
+            display = f"{base_clean} (176.5B (5B Active) / 512 Experts · 24.98 GiB Trunk + Lazy PLE · NextN MTP{ablit_tag})"
         else:
-            display = f"{base_clean} (80B+PLE / 512 Experts · 53.99 GiB Full-RAM · NextN MTP{ablit_tag})"
+            display = f"{base_clean} (176.5B (5B Active) / 512 Experts · 53.99 GiB Full-RAM · NextN MTP{ablit_tag})"
         return raw_id, display, "Qwen3.8-Flash-Next"
     if "deepseek" in low or "dsv4" in low:
         if "abliterated" in low:

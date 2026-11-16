@@ -935,6 +935,7 @@ def _build_modchip_telemetry_json() -> dict:
     slot_tokens = 0
     slot_state = "OFFLINE"
     backend_up = False
+    active_model = ""
     try:
         req = urllib.request.Request(f"{UPSTREAM_BASE}/slots", method="GET")
         with urllib.request.urlopen(req, timeout=0.6) as resp:
@@ -947,6 +948,33 @@ def _build_modchip_telemetry_json() -> dict:
     except Exception:
         pass
 
+    if backend_up:
+        try:
+            preq = urllib.request.Request(f"{UPSTREAM_BASE}/props", method="GET")
+            with urllib.request.urlopen(preq, timeout=0.5) as presp:
+                pdata = json.loads(presp.read().decode("utf-8"))
+                active_model = os.path.basename(str(pdata.get("model_path") or ""))
+        except Exception:
+            pass
+        if not active_model:
+            try:
+                mreq = urllib.request.Request(f"{UPSTREAM_BASE}/v1/models", method="GET")
+                with urllib.request.urlopen(mreq, timeout=0.5) as mresp:
+                    mdata = json.loads(mresp.read().decode("utf-8"))
+                    mlist = mdata.get("data") or mdata.get("models") or []
+                    if mlist and isinstance(mlist[0], dict):
+                        active_model = os.path.basename(str(mlist[0].get("id") or mlist[0].get("name") or ""))
+            except Exception:
+                pass
+    if not active_model:
+        def_mfile = os.path.join(_REPO_ROOT, "workspace", "run", "default_model")
+        if os.path.isfile(def_mfile):
+            try:
+                with open(def_mfile, "r", encoding="utf-8") as dmf:
+                    active_model = os.path.basename(dmf.readline().strip())
+            except Exception:
+                pass
+
     return {
         "cpu_model": cpu_model,
         "anon_hugepages_gib": anon_hp_gib,
@@ -954,6 +982,7 @@ def _build_modchip_telemetry_json() -> dict:
         "slot0_tokens": slot_tokens,
         "slot0_state": slot_state,
         "backend_up": backend_up,
+        "active_model": active_model,
         "upstream": UPSTREAM_BASE,
     }
 
@@ -963,7 +992,7 @@ WEB_UI_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>llama-modchip v2.1 — 256K CPU Co-Design + Stockfish-PVS HUD</title>
+<title>llama-modchip v3.0 — MaxQ 16GB/32GB/64GB CPU + Speculative HUD</title>
 <style>
   :root {
     --bg: #0b0e14;
@@ -1198,15 +1227,15 @@ WEB_UI_HTML = """<!DOCTYPE html>
 </div>
 
 <main id="chat">
-  <div class="msg assistant">👋 <b>Welcome to the llama-modchip v2.1 Live Console!</b>
-Send any prompt below or click one of the <b>1-Click Benchmarks</b> above to watch real-time token streaming and measure your CPU's <b>Prefill tok/s</b>, <b>Decode tok/s</b>, and <b>Stockfish-PVS (M=7) draft acceptance</b>.</div>
+  <div class="msg assistant">👋 <b>Welcome to the llama-modchip v3.0 Live Console!</b>
+Send any prompt below or click one of the <b>1-Click Benchmarks</b> above to watch real-time token streaming and measure your CPU's <b>Prefill tok/s</b>, <b>Decode tok/s</b>, and <b>NextN Draft-MTP / Stockfish-PVS acceptance</b>.</div>
 </main>
 
 <footer>
   <div class="input-row">
     <select id="think-mode" title="Reasoning Budget">
       <option value="0" selected>⚡ No Think (Fastest)</option>
-      <option value="1024">🧠 Med Think (1K)</option>
+      <option value="4096">🧠 Med Think (4K)</option>
       <option value="-1">🔬 Max Think</option>
     </select>
     <textarea id="prompt" placeholder="Ask anything or paste code to refactor... (Enter to send, Shift+Enter for newline)"></textarea>
@@ -1217,12 +1246,14 @@ Send any prompt below or click one of the <b>1-Click Benchmarks</b> above to wat
 <script>
 let historyMsgs = [];
 let peakTps = 0.0;
+let activeModel = '';
 
 async function pollTelemetry() {
   try {
     const r = await fetch('/api/modchip');
     if (!r.ok) return;
     const d = await r.json();
+    if (d.active_model) activeModel = d.active_model;
     const badge = document.getElementById('status-badge');
     if (d.backend_up) {
       badge.textContent = d.slot0_state || 'ONLINE';
@@ -1296,19 +1327,36 @@ async function sendMessage() {
   let thinkText = '';
 
   try {
+    if (!activeModel) {
+      try {
+        const mr = await fetch('/api/modchip');
+        if (mr.ok) { const md = await mr.json(); if (md.active_model) activeModel = md.active_model; }
+      } catch (e) {}
+    }
+    const lowModel = (activeModel || '').toLowerCase();
+    const isQwen38_32GB = (lowModel.includes('qwen3.8') || lowModel.includes('qwen38') || lowModel.includes('qwen4exp')) && lowModel.includes('32gb');
+    const reqBody = {
+      model: activeModel || 'modchip-local',
+      messages: historyMsgs,
+      stream: true,
+      max_tokens: (budget !== 0 ? 16384 : 4096),
+      reasoning_budget: budget,
+      chat_template_kwargs: {enable_thinking: budget !== 0},
+      timings_per_token: true
+    };
+    if (isQwen38_32GB) {
+      reqBody.temperature = 0.6;
+      reqBody.top_p = 0.95;
+      reqBody.top_k = 20;
+      reqBody.presence_penalty = 0.2;
+      reqBody.repeat_penalty = 1.05;
+    } else {
+      reqBody.temperature = 0.0;
+    }
     const resp = await fetch('/v1/chat/completions', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        model: 'nemotron-30b',
-        messages: historyMsgs,
-        stream: true,
-        temperature: 0.0,
-        max_tokens: 1024,
-        reasoning_budget: budget,
-        chat_template_kwargs: {enable_thinking: budget !== 0},
-        timings_per_token: true
-      })
+      body: JSON.stringify(reqBody)
     });
 
     const reader = resp.body.getReader();
@@ -1564,9 +1612,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
         body_bytes = self.rfile.read(length) if length else b""
 
         # Session tracking: bind session header and client IP
-        session_id = self.headers.get("X-Session-ID") or self.headers.get("X-Vex-Session")
+        session_id = self.headers.get("X-Session-ID") or self.headers.get("X-Modchip-Session")
         client_ip = self.client_address[0]
-        init_mode = (self.headers.get("X-Init-Think") or self.headers.get("X-Vex-Init-Think") or "").lower()
+        init_mode = (self.headers.get("X-Init-Think") or self.headers.get("X-Modchip-Init-Think") or "").lower()
 
         if session_id:
             active_mode = get_session_mode(session_id, init_mode)
@@ -1710,8 +1758,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 # Intercept Claude Code background utility probes (topic/title classifiers, file-path extractors,
                 # or explicit GATEWAY_INTERCEPT_ALL_PROBES=1) so they never overwrite or block Slot 0,
                 # while still forwarding legitimate non-streaming or tool-less /v1/messages requests.
-                is_direct = self.headers.get("X-Direct") or self.headers.get("X-Vex-Direct")
-                is_prewarm = self.headers.get("X-Prewarm") or self.headers.get("X-Vex-Prewarm")
+                is_direct = self.headers.get("X-Direct") or self.headers.get("X-Modchip-Direct")
+                is_prewarm = self.headers.get("X-Prewarm") or self.headers.get("X-Modchip-Prewarm")
                 if (not data.get("tools") or not is_stream) and not is_direct and not is_prewarm:
                     raw_str = json.dumps(data)
                     is_claude_bg_probe = (
@@ -1828,10 +1876,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
                             messages[0]["content"] = messages[0].get("content", "") + "\n\n" + "\n".join(compact_lines)
                         data.pop("tools", None)
 
-                # Enforce safe upper bound on max_tokens to prevent runaway loops
+                # Enforce safe upper bound on max_tokens (allow up to 16384 when thinking is enabled in max/med mode)
+                max_tok_cap = 16384 if active_mode == "max" else (8192 if active_mode == "med" else 4096)
                 cur_max = data.get("max_tokens")
-                if cur_max is None or cur_max > 4096:
-                    data["max_tokens"] = 4096
+                if cur_max is None:
+                    data["max_tokens"] = 16384 if active_mode == "max" else 4096
+                elif cur_max > max_tok_cap:
+                    data["max_tokens"] = max_tok_cap
                 # repeat_penalty omitted so <|im_end|> stop token is never penalized
 
                 # Configure reasoning budget for llama-server

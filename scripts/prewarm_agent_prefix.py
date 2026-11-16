@@ -113,7 +113,7 @@ def main():
             "Content-Type": "application/json",
             "Anthropic-Version": "2023-06-01",
             "X-Prewarm": "1",
-            "X-Vex-Prewarm": "1",
+            "X-Modchip-Prewarm": "1",
         },
         method="POST",
     )

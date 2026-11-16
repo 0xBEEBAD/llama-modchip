@@ -1,33 +1,23 @@
-# `LUT-VQ3-64` & `Fractal-64` GGUFs on Windows (`v2.5.3` Patched Engine)
+# Unified `llama-modchip v3.0` Engine on Windows (`Qwen3.8`, `DeepSeek-V4 284B`, & `Nemotron-30B`)
 
-**Stock Windows binaries cannot load `Fractal-64` (`type 42`) or `LUT-VQ3-64` (`type 43`) GGUFs.**
-`Fractal-64` uses `GGML_TYPE_Q2_0 = 42` with a 30-byte / 64-weight block and `LUT-VQ3-64` uses `GGML_TYPE_VQ3_0 = 43` with a 24-byte / 64-weight 3D vector-quantized block, whereas upstream `llama.cpp` (`llama-bXXX-bin-win-cuda-x64` downloaded by `modchip_win.ps1`) only implements an older 18-byte `Q2_0` layout and rejects `type 43`. Loading with stock binaries fails with:
+In **`v3.0`**, **`Qwen3.8-Flash-Next-MaxQ-64GB`** (`53.99 GiB`), **`Qwen3.8-Flash-Next-MaxQ-32GB`** (`35.71 GiB`), **`DeepSeek-V4-Flash-0731-MaxQ-v4`** (`57.99 GiB`), and **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** (`~13.3 GiB`) use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched), while CPU-Turbo **`NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64`** (`13.30 GiB`) uses zero-collision **`GGML_TYPE_FRACTAL_64 = 44`** (`30 B / 64 W`) and **`GGML_TYPE_VQ3_64 = 45`** (`24 B / 64 W`).
 
-```text
-check_tensor_dims: tensor 'blk.0.attn_kv.weight' has offset 596983872, expected 596590656
-```
+`AVVIA_MODCHIP.bat` (`modchip_win.ps1`) remains the GPU+CPU hybrid launcher for 16 GB standard GGUFs (`Qwen3`, `Nemotron Q4_0` / `MaxQ-16GB`, `Nemotron-H-8B`). For the unified `v3.0` CPU engine (`Qwen3.8-MaxQ-64GB/32GB` with `--spec-type draft-mtp` and zero-copy 3D MoE `mmap` repack, `DeepSeek-V4-Flash 284B` ConeCollapse, and `Nemotron VQ3-64` AVX-512 VBMI), use the workflow below.
 
-`AVVIA_MODCHIP.bat` (`modchip_win.ps1`) remains the GPU+CPU hybrid launcher for standard GGUFs (`Qwen3`, `Nemotron Q4_0` / `MXFP4`, `Nemotron-H-8B`). For `Fractal-64` and `LUT-VQ3-64` checkpoints (`DeepSeek-V4-Flash 284B` and `Nemotron-3.5-30B`), use the patched engine workflow below.
-
-## 1. Build the `v2.5.3` patched engine
+## 1. Build the unified `v3.0` patched engine
 
 With MSYS2 MinGW-w64 UCRT64 (`gcc >= 14`), Git, CMake, and Ninja on `PATH`:
 
 ```powershell
-# For DeepSeek-V4-Flash 284B (MaxQ-Fractal 56.93 GiB, VQ3-64 56.40 GiB & Fractal-64 56.57 GiB — default):
-powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1 -Target dsv4
-
-# For NVIDIA-Nemotron-3.5-30B-A3B (VQ3-64 13.30 GiB & Fractal-64 14.36 GiB):
-powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1 -Target nemotron
+# Unified v3.0 engine (supports Qwen3.8, DeepSeek-V4 284B & Nemotron-30B — default):
+powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1
 ```
 
-> **Note on Prebuilt `v2.4.0` Binaries:** Community static `.exe` builds for `Fractal-64` (`type 42` only, prior to `v2.5.0` `VQ3_0 = 43` and the `54c89bf` UCRT64 AVX-512 ABI fix) are archived at [`MR1KRAKEN/llama-modchip v2.4.0-windows-cpu`](https://github.com/MR1KRAKEN/llama-modchip/releases/tag/v2.4.0-windows-cpu). For `v2.5.x` `MaxQ-Fractal` / `VQ3-64` (`type 43`) models or Zen 4/5 AVX-512 hosts on Windows 11, compile directly with `windows\build_patched_engine.ps1` above.
-
-`build_patched_engine.ps1` clones `ggml-org/llama.cpp` at `d2f83055`, applies `patches/deepseek-v4-flash-fractal-256k.patch` + `patches/dsv4-ipc-hardening.patch` (or `patches/zen5-nemotron-256k-optimizations.patch`) plus `patches/lut-vq3-64-avx512-vbmi.patch` and `patches/vq3_codebook.h`, copies `speculative/cpp/rc_*.h` into `common/`, applies all Windows portability fixes (including unaligned `vmovdqu64` `.rdata` loads, Windows x64 `XMM6..XMM15` ABI safety, and `16 MB` stack size `-Wl,--stack,16777216`), and outputs static `windows\bin-modchip\llama-server.exe`, `llama-cli.exe`, and `llama-bench.exe`.
+`build_patched_engine.ps1` clones `ggml-org/llama.cpp` at pinned commit **`de32b268c`** (`de32b268c4ad55d45f3b7b16c029f4e077f4ba74`), applies [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch) (including `FRACTAL_64 = 44`, `VQ3_64 = 45`, `qwen4exp` AVX-512 GDN + 3D MoE `mmap` repack preservation, `deepseek4` ConeCollapse, RouteCrack/Stockfish-PVS headers, unaligned `vmovdqu64` `.rdata` loads, Windows x64 `XMM6..XMM15` ABI safety, and `16 MB` stack size `-Wl,--stack,16777216`), and outputs static `windows\bin-modchip\llama-server.exe`, `llama-cli.exe`, and `llama-bench.exe`.
 
 ## 2. Run
 
-Place the GGUF shards (`DeepSeek-V4-Flash-0731-MaxQ-Fractal-*.gguf`, `DeepSeek-V4-Flash-0731-VQ3-*.gguf`, or `DeepSeek-V4-Flash-0731-Fractal-*.gguf`) in `windows\models\` and run:
+Place the GGUF shards (`Qwen3.8-Flash-Next-MaxQ-64GB-*.gguf`, `Qwen3.8-Flash-Next-MaxQ-32GB-*.gguf`, `DeepSeek-V4-Flash-0731-MaxQ-v4-*.gguf`, or `NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf`) in `windows\models\` and run:
 
 ```bat
 windows\AVVIA_DSV4.bat

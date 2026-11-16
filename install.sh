@@ -21,6 +21,7 @@
 #   --source               Compile unified v3.0 engine locally from source (cmake/g++)
 #   --yes, -y              Non-interactive mode: accept hardware-matched aligned defaults
 #   --accept-abliterated   Confirm opt-in consent when selecting an abliterated preset in --yes mode
+#   --with-mmproj          Also download & pass mmproj-Qwen3.8-Flash-Next-BF16.gguf (0.85 GiB vision projector)
 #   --corpus <dir>         Optional path to your codebase for Nemotron RouteCrack n-grams
 #   --port <port>          llama-server port (default: 8789)
 # ==============================================================================
@@ -96,6 +97,7 @@ fi
 USE_PREBUILT="${USE_PREBUILT:-0}"
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 ACCEPT_ABLITERATED="${ACCEPT_ABLITERATED:-0}"
+WITH_MMPROJ="${WITH_MMPROJ:-0}"
 USER_CORPUS_DIR=""
 SERVER_HOST="${SERVER_HOST:-127.0.0.1}"
 SERVER_PORT="${SERVER_PORT:-8789}"
@@ -139,6 +141,10 @@ while [[ $# -gt 0 ]]; do
             ACCEPT_ABLITERATED=1
             shift
             ;;
+        --with-mmproj)
+            WITH_MMPROJ=1
+            shift
+            ;;
         --corpus)
             USER_CORPUS_DIR="$(resolve_path "$2")"
             shift 2
@@ -148,7 +154,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            sed -n '2,26p' "$0"
+            sed -n '2,27p' "$0"
             exit 0
             ;;
         *)
@@ -314,17 +320,17 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo " MAXQ v3.0 3-TIER MODEL MATRIX (Detected RAM: ~${TOTAL_RAM_GB} GiB | Physical Cores: ${PHYS_CORES})"
         echo "------------------------------------------------------------------------------"
         echo "  [64 GB RAM TIER]"
-        echo "  1) Qwen3.8-Flash-Next-MaxQ-64GB                 [80B+PLE · 53.99 GiB · 2 shards]"
+        echo "  1) Qwen3.8-Flash-Next-MaxQ-64GB                 [176.5B (5B Active) · 53.99 GiB · 2 shards]"
         echo "     Default 64GB Flagship (12.66 t/s draft-mtp · PPL 3.43 · 100% std ggml)"
-        echo "  2) Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated     [80B+PLE · 53.99 GiB · 2 shards]"
+        echo "  2) Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated     [176.5B (5B Active) · 53.99 GiB · 2 shards]"
         echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated + NextN draft-mtp"
         echo "  3) DeepSeek-V4-Flash-0731-MaxQ-v4               [284B MoE · 57.99 GiB · 3 shards]"
         echo "     284B-A13B Alternative (19.2 t/s ngram-simple burst · 100% std ggml)"
         echo ""
         echo "  [32 GB RAM TIER]"
-        echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [80B+PLE · 24.98 GiB + 10.73 GiB PLE]"
+        echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
         echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · 11.45–14.29 t/s draft-mtp)"
-        echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [80B+PLE · 24.98 GiB + 10.73 GiB PLE]"
+        echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
         echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated + NextN draft-mtp"
         echo ""
         echo "  [16 GB RAM TIER]"
@@ -380,7 +386,7 @@ else
         1|qwen38-64gb|qwen-64gb|Qwen3.8-Flash-Next-MaxQ-64GB)
             MODEL_PRESET="qwen38-64gb"
             MODEL_FAMILY="qwen38"
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB (80B+PLE · 53.99 GiB · 2 shards)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB · 2 shards)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-64gb"
@@ -398,7 +404,7 @@ else
             MODEL_PRESET="qwen38-64gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (80B+PLE · 53.99 GiB · 2 shards)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB · 2 shards)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-64gb-ablit"
@@ -434,7 +440,7 @@ else
         4|qwen38-32gb|qwen-32gb|Qwen3.8-Flash-Next-MaxQ-32GB)
             MODEL_PRESET="qwen38-32gb"
             MODEL_FAMILY="qwen38"
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB (80B+PLE · 24.98 GiB Shard 1 + 10.73 GiB Lazy PLE)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB Shard 1 + 10.73 GiB Lazy PLE)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-32gb"
@@ -452,7 +458,7 @@ else
             MODEL_PRESET="qwen38-32gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (80B+PLE · 24.98 GiB Shard 1 + Lazy PLE)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB Shard 1 + Lazy PLE)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-32gb-ablit"
@@ -577,6 +583,11 @@ else
             ;;
     esac
     DEFAULT_MODEL_NAME="${MODEL_SHARDS[0]}"
+    if [[ "$MODEL_FAMILY" == "qwen38" && "$WITH_MMPROJ" == "1" ]]; then
+        MODEL_SHARDS+=("mmproj-Qwen3.8-Flash-Next-BF16.gguf")
+        MODEL_SHARD_SIZES+=(907542880)
+        MODEL_SHARD_SHA256S+=("ef2af1d6aa8a22740c7252bc7ce40c5c2f1249aa8d9c8499a4d4572c3cfdf9df")
+    fi
 fi
 
 if [[ "$MODEL_PRESET" == "qwen38-64gb"* && "$TOTAL_RAM_GB" -lt 58 ]]; then
@@ -1028,6 +1039,16 @@ if [[ "\${MODEL_ARCH:-}" == "qwen4exp" ]]; then
         CKPT_ARGS=(--ctx-checkpoints "\${MODCHIP_CTX_CHECKPOINTS:-1}")
     fi
     MODEL_EXTRA_ARGS+=(--jinja)
+    MMPROJ_CAND="\$(dirname "\$MODEL")/mmproj-Qwen3.8-Flash-Next-BF16.gguf"
+    if [[ -f "\$MMPROJ_CAND" ]]; then
+        HAS_MMPROJ_FLAG=0
+        for _arg in \${PASS_ARGS[@]+"\${PASS_ARGS[@]}"} \${EXTRA_SERVER_ARGS:-}; do
+            case "\$_arg" in
+                --mmproj|--mmproj=*|--no-mmproj) HAS_MMPROJ_FLAG=1; break ;;
+            esac
+        done
+        [[ "\$HAS_MMPROJ_FLAG" == "0" ]] && MODEL_EXTRA_ARGS+=(--mmproj "\$MMPROJ_CAND")
+    fi
     if [[ "\${IS_QWEN38_32GB:-0}" == "1" ]]; then
         MODEL_EXTRA_ARGS+=(--temp 0.6 --top-p 0.95 --top-k 20 --presence-penalty 0.2 --repeat-penalty 1.05)
     fi

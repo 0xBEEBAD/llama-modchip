@@ -120,23 +120,20 @@ Because the 2-chunk prefix (`ref5632_2ch.kld`, chunks `1..2` = `5,630` scored to
 ## 4. Reproducibility Commands
 
 ```bash
-# 1. Run Python pack/unpack and AVX-512 golden-vector unit tests
-python3 -m unittest discover -s vq3 -p "test_*.py" -v
+# 1. Build unified llama-modchip v3.0 engine with quantizer & backend kernel unit tests enabled
+BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
+./workspace/llama.cpp/build/bin/test-quantize-fns
+./workspace/llama.cpp/build/bin/test-backend-ops test -b CPU
 
-# 2. Compile and run the standalone AVX-512 VBMI kernel accuracy test
-gcc -O3 -march=native -mavx512f -mavx512bw -mavx512vbmi -mf16c -mbmi2 \
-  vq3/test_vq3_ggml_kernels.c -lm -o vq3/test_vq3_ggml_kernels && ./vq3/test_vq3_ggml_kernels
+# 2. Download & SHA-256 verify pre-quantized checkpoints from Hugging Face
+./install.sh --preset qwen38-64gb --yes
+./install.sh --preset dsv4-maxq --yes
+./install.sh --preset nemotron-vq3 --yes
 
-# 3. Build donor-free single-pass MaxQ-Fractal (pure 0731 aligned default or opt-in abliterated) & Nemotron VQ3-64 GGUFs
-python3 scripts/build_dsv4_maxq_singlepass.py --mode aligned --out-prefix ./DeepSeek-V4-Flash-0731-MaxQ-Fractal
-python3 scripts/build_dsv4_maxq_singlepass.py --mode abliterated --hf-repo prem-research/DeepSeek-V4-Flash-0731-abliterated --out-prefix ./DeepSeek-V4-Flash-0731-Abliterated-Fractal
-python3 scripts/build_nemotron_vq3.py --fractal-gguf <Fractal-64.gguf> --bf16-gguf <BF16.gguf> --output NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf
-python3 scripts/build_nemotron_abliterated_vq3.py --output NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf
-
-# 4. Run WikiText-2 Perplexity + Full 51-Chunk AtomicChat wiki-alt.txt (ctx=5632) + 32-Probe / Multi-Step Logit KLD
+# 3. Run WikiText-2 Perplexity + Full 51-Chunk wiki-alt.txt (ctx=5632) + 32-Probe / Multi-Step Logit KLD
 python3 benchmarks/eval_perplexity_and_kld.py \
   --llama-perplexity ./workspace/bin/llama-perplexity \
-  --model ./workspace/models/dsv4-maxq-fractal/DeepSeek-V4-Flash-0731-MaxQ-Fractal-00001-of-00003.gguf \
+  --model ./workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf \
   --ctx-size 512 --chunks 16 \
   --url http://127.0.0.1:8080 \
   --ref-logits benchmarks/results/dsv4_maxq_ref_logits.json \
@@ -144,8 +141,8 @@ python3 benchmarks/eval_perplexity_and_kld.py \
   --save-json benchmarks/results/cont_dsv4_candidate.json
 
 ./workspace/bin/llama-perplexity \
-  -m ./workspace/models/dsv4-maxq-fractal/DeepSeek-V4-Flash-0731-MaxQ-Fractal-00001-of-00003.gguf \
-  -f wiki-alt.txt -c 5632 -b 5632 --repack -fa on -t 16 -tb 16 --ppl-output-type 1
+  -m ./workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf \
+  -f wiki-alt.txt -c 5632 -b 5632 --repack -fa on -t 15 -tb 15 --poll 0 --ppl-output-type 1
 
 python3 benchmarks/eval_perplexity_and_kld.py \
   --llama-perplexity ./workspace/bin/llama-perplexity \
@@ -156,12 +153,12 @@ python3 benchmarks/eval_perplexity_and_kld.py \
   --rollout-steps 8 \
   --save-json benchmarks/results/kld_nemotron_vq3_64_vs_bf16.json
 
-# 5. Run the 100-Point Functional Gate + 8-Prompt Dual-Use Security Refusal Audit
+# 4. Run the 100-Point Functional Gate + 8-Prompt Dual-Use Security Refusal Audit
 python3 benchmarks/eval_quality_and_tools.py \
   --url http://127.0.0.1:8080 \
   --target-tps 9.0 \
-  --label MaxQ-Fractal-0731-56.93GiB \
-  --save-json benchmarks/results/gate_MaxQ-Fractal-0731-56.93GiB.json
+  --label MaxQ-v4-0731-57.99GiB \
+  --save-json benchmarks/results/gate_MaxQ-v4-0731-57.99GiB.json
 
 python3 benchmarks/eval_hard60_and_refusal.py \
   --url http://127.0.0.1:8080 \

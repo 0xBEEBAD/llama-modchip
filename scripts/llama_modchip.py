@@ -627,6 +627,8 @@ def _build_hacks_list(
         moe_reason = "DeepSeek-V4 uses 3 hash-routed + 40 learned Top-6 layers; keep Top-6 unpruned."
         moe_enabled = False
     elif model.is_moe and model.expert_used_count >= 6:
+        pruned_k = 8 if model.arch == "qwen4exp" else 4
+        pruned_overhead_pct = int(round(((model.expert_used_count / pruned_k) - 1.0) * 100))
         if 0 < moe_top_k < model.expert_used_count:
             saved_pct = int(round((1.0 - (moe_top_k / model.expert_used_count)) * 100))
             moe_enabled = True
@@ -638,7 +640,7 @@ def _build_hacks_list(
                     f"-{saved_pct}% routed DRAM, norm=True)"
                 )
                 moe_reason = (
-                    "Speed/Quality Trade-off: expert_weights_norm=True renormalizes top-4 experts; "
+                    f"Speed/Quality Trade-off: expert_weights_norm=True renormalizes top-{moe_top_k} experts; "
                     f"toggle OFF (or LLAMA_MOE_TOP_K={model.expert_used_count}) for native Top-{model.expert_used_count} recall."
                 )
             else:
@@ -650,11 +652,11 @@ def _build_hacks_list(
             moe_safety = "SAFE"
             moe_val = (
                 f"OFF — Native Unpruned Top-{model.expert_used_count}/{model.expert_used_count} Active "
-                f"(Full Symbol Recall; [SPACE] -> Top-4)"
+                f"(Full Symbol Recall; [SPACE] -> Top-{pruned_k})"
             )
             moe_reason = (
                 f"All {model.expert_used_count} routed experts active per token (best C/systems API recall; "
-                f"+50% routed MoE DRAM vs Top-4)."
+                f"+{pruned_overhead_pct}% routed MoE DRAM vs Top-{pruned_k})."
             )
     else:
         moe_safety = "LOCKED"
@@ -719,19 +721,33 @@ def _build_hacks_list(
         ),
         HackItem(
             7, "eakv_quant",
-            "Symmetric MLA KV Quantization (-ctk q8_0 -ctv q8_0)"
-            if model.arch == "deepseek4"
-            else "Asymmetric KV Quantization (-ctk q8_0 -ctv q4_0)",
+            (
+                "Symmetric MLA KV Quantization (-ctk q8_0 -ctv q8_0)"
+                if model.arch == "deepseek4"
+                else (
+                    "Symmetric QSA KV Quantization (-ctk q8_0 -ctv q8_0)"
+                    if model.arch == "qwen4exp"
+                    else "Asymmetric KV Quantization (-ctk q8_0 -ctv q4_0)"
+                )
+            ),
             "BOOT", "SAFE", use_eakv,
             (
                 f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8_0 MLA, -46.9%)"
                 if model.arch == "deepseek4"
-                else f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8/Q4, -62.5%)"
+                else (
+                    f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8_0 QSA, -46.9%)"
+                    if model.arch == "qwen4exp"
+                    else f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8/Q4, -62.5%)"
+                )
             ),
             (
                 "Applied at server startup: DeepSeek-V4 MLA requires matching K/V cache types (Q8_0/Q8_0)."
                 if model.arch == "deepseek4"
-                else "Applied at server startup: Keys in Q8_0, Values in Q4_0."
+                else (
+                    "Applied at server startup: Qwen3.8 QSA full-attention uses symmetric Q8_0/Q8_0 KV cache."
+                    if model.arch == "qwen4exp"
+                    else "Applied at server startup: Keys in Q8_0, Values in Q4_0."
+                )
             ),
         ),
         HackItem(
@@ -1113,6 +1129,12 @@ def build_launch_command(
     if prof.model.arch == "qwen4exp":
         q_ckpts = 0 if prof.hw.ram_total_gib < 48.0 else 1
         cmd_parts.append(f"--jinja --ctx-checkpoints {q_ckpts}")
+        mmproj_cand = os.path.join(
+            os.path.dirname(os.path.abspath(prof.model.path)),
+            "mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+        )
+        if os.path.isfile(mmproj_cand):
+            cmd_parts.append(f"--mmproj {shlex.quote(mmproj_cand)}")
         if prof.model.is_qwen38_32gb:
             cmd_parts.append("--temp 0.6 --top-p 0.95 --top-k 20 --presence-penalty 0.2 --repeat-penalty 1.05")
     elif prof.model.is_hybrid_ssm or prof.model.arch == "deepseek4":
@@ -1316,7 +1338,8 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
 
     m = prof.model
     hw = prof.hw
-    n_threads = len(hw.physical_core_cpus)
+    n_phys = len(hw.physical_core_cpus)
+    n_threads = hw.decode_threads
     native_top_k = m.expert_used_count if m.is_moe else 0
 
     print("\n" + "=" * 100)
@@ -1331,6 +1354,8 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
             except OSError:
                 pass
     base_env = os.environ.copy()
+    if m.arch != "nemotron_h_moe":
+        base_env["RC_TABLES_DIR"] = "/nonexistent"
     base_env["LLAMA_ATTN_WINDOW"] = "0"
     base_env["LLAMA_SWA_STRIDE"] = "1"
     if native_top_k > 0 and m.arch != "deepseek4":
@@ -1341,15 +1366,18 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
         resolved_bench,
         "-m", m.path,
         "-t", str(n_threads),
+        "--poll", "0",
         "-p", "512", "-n", "64", "-r", "2",
     ]
-    print(f"[*] Run A (Stock Baseline — Top-K={native_top_k or 'Dense'}, FP16 KV): running...")
+    print(f"[*] Run A (Stock Baseline — Top-K={native_top_k or 'Dense'}, FP16 KV, -t {n_threads} --poll 0): running...")
     res_a = subprocess.run(base_cmd, env=base_env, capture_output=True, text=True)
     pp_a, tg_a = _parse_llama_bench_output(res_a.stdout + "\n" + res_a.stderr)
 
     # 2. Modchip Profile
     write_modchip_shm(prof)
     mod_env = os.environ.copy()
+    if m.arch != "nemotron_h_moe":
+        mod_env["RC_TABLES_DIR"] = "/nonexistent"
     mod_env["LLAMA_ATTN_WINDOW"] = str(prof.attn_window)
     mod_env["LLAMA_ATTN_SINKS"] = str(prof.attn_sinks)
     mod_env["LLAMA_SWA_STRIDE"] = str(prof.swa_stride)
@@ -1358,17 +1386,18 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
     if prof.moe_top_k > 0 and m.arch != "deepseek4":
         mod_env["LLAMA_MOE_TOP_K"] = str(prof.moe_top_k)
 
-    ctv = "q8_0" if m.arch == "deepseek4" else "q4_0"
+    ctv = "q8_0" if m.arch in ("deepseek4", "qwen4exp") else "q4_0"
     mod_cmd = pin_prefix + [
         resolved_bench,
         "-m", m.path,
         "-t", str(n_threads),
+        "--poll", "0",
         "-ctk", "q8_0", "-ctv", ctv,
         "-p", "512", "-n", "64", "-r", "2",
     ]
     print(
         f"[*] Run B (llama-modchip — Top-K={prof.moe_top_k or native_top_k or 'Dense'}, "
-        f"SWA_STRIDE={prof.swa_stride}, L3_WIN={prof.l3_window}, Q8_0/{ctv.upper()} KV): running..."
+        f"SWA_STRIDE={prof.swa_stride}, L3_WIN={prof.l3_window}, Q8_0/{ctv.upper()} KV, -t {n_threads} --poll 0): running..."
     )
     res_b = subprocess.run(mod_cmd, env=mod_env, capture_output=True, text=True)
     pp_b, tg_b = _parse_llama_bench_output(res_b.stdout + "\n" + res_b.stderr)
@@ -1377,7 +1406,7 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
         pp_gain = ((pp_b - pp_a) / pp_a) * 100.0
         tg_gain = ((tg_b - tg_a) / tg_a) * 100.0
         print("\n### Ready-to-Paste Community Benchmark Table (Markdown)\n")
-        print(f"- **CPU:** `{hw.cpu_model}` (`{n_threads}` physical cores, `{hw.num_ccds}x{hw.l3_per_ccd_mb:.0f} MB` L3, THP=`{hw.thp_mode}`)")
+        print(f"- **CPU:** `{hw.cpu_model}` (`{n_phys}` physical cores, `-t {n_threads} --poll 0`, `{hw.num_ccds}x{hw.l3_per_ccd_mb:.0f} MB` L3, THP=`{hw.thp_mode}`)")
         print(f"- **Model:** `{m.filename}` (`{m.arch_summary}`, `{m.file_size_gib:.2f} GiB`)\n")
         print("| Configuration | Prefill (`pp512`) | Decode (`tg64` Base, No Spec) | Active Profile |")
         print("| :--- | :---: | :---: | :--- |")
@@ -1406,7 +1435,7 @@ def run_tui(prof: ModchipProfile, port: int = 8789) -> None:
     if 0 < prof.l3_window < 262144:
         default_l3_win = prof.l3_window
     default_swa_win = prof.attn_window if prof.attn_window > 0 else 4096
-    default_pruned_topk = 4
+    default_pruned_topk = 8 if prof.model.arch == "qwen4exp" else 4
 
     def _tui_main(stdscr):
         curses.curs_set(0)

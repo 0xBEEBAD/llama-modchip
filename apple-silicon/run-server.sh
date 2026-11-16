@@ -64,6 +64,10 @@ if [[ ! -f "$MODEL" ]]; then
     exit 1
 fi
 
+if [[ "$(basename "$MODEL")" != *[Nn]emotron* ]]; then
+    export RC_TABLES_DIR="/nonexistent"
+fi
+
 args=(
     --model "$MODEL"
     --alias nemotron-3.5-30b-a3b
