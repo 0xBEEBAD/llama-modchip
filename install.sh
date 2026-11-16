@@ -323,7 +323,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  1) Qwen3.8-Flash-Next-MaxQ-64GB                 [176.5B (5B Active) · 53.99 GiB · 2 shards]"
         echo "     Default 64GB Flagship (12.66 t/s draft-mtp · PPL 3.43 · 100% std ggml)"
         echo "  2) Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated     [176.5B (5B Active) · 53.99 GiB · 2 shards]"
-        echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated + NextN draft-mtp"
+        echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated (+0.18% dPPL · PPL 3.44 · NextN draft-mtp)"
         echo "  3) DeepSeek-V4-Flash-0731-MaxQ-v4               [284B MoE · 57.99 GiB · 3 shards]"
         echo "     284B-A13B Alternative (19.2 t/s ngram-simple burst · 100% std ggml)"
         echo ""
@@ -331,7 +331,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
         echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · 11.45–14.29 t/s draft-mtp)"
         echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
-        echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated + NextN draft-mtp"
+        echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated (+0.32% dPPL · PPL 5.82 · NextN draft-mtp)"
         echo ""
         echo "  [16 GB RAM TIER]"
         echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.0 CPU-Turbo]"
@@ -404,7 +404,7 @@ else
             MODEL_PRESET="qwen38-64gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB · 2 shards)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB · +0.18% dPPL · 2 shards)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-64gb-ablit"
@@ -414,7 +414,7 @@ else
             )
             MODEL_SHARD_SIZES=(46449692736 11520055616)
             MODEL_SHARD_SHA256S=(
-                ""
+                "384bc936bdad75383c03e87184056e1cb0b037b0e3f5d5ae5273fd46f55150aa"
                 "86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e"
             )
             ;;
@@ -458,7 +458,7 @@ else
             MODEL_PRESET="qwen38-32gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB Shard 1 + Lazy PLE)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB Shard 1 + Lazy PLE · +0.32% dPPL)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-GGUF"
             MODEL_REV="main"
             MODEL_SUBDIR="qwen38-maxq-32gb-ablit"
@@ -468,7 +468,7 @@ else
             )
             MODEL_SHARD_SIZES=(26821627808 11520055616)
             MODEL_SHARD_SHA256S=(
-                ""
+                "6e8ae62c37bc08de1a69e9e78ab9bae0262f87ffe543595206d1c3b3a810fd67"
                 "86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e"
             )
             ;;
@@ -608,10 +608,10 @@ if [[ "$IS_ABLITERATED" == "1" ]]; then
     echo " [!] DISCLAIMER — OPT-IN ABLITERATED / UNCENSORED MODEL CHECKPOINT"
     echo "=============================================================================="
     echo " Selected model (${MODEL_LABEL}) has refusal-mediating activation directions"
-    echo " removed via orthogonal subspace projection."
-    echo " Standard upstream safety refusal filters are disabled."
-    echo "   • Scope: Authorized security research, red-teaming, CTF, code auditing,"
-    echo "     and local offline development only."
+    echo " attenuated via orthogonal subspace projection. Upstream safety refusal"
+    echo " filters cannot be relied upon for content moderation."
+    echo "   • Scope: Authorized security research, reverse engineering, red-teaming,"
+    echo "     CTF, code auditing, and uncensored legal/policy analysis only."
     echo "   • Deployment: Do NOT expose this model to unmoderated public networks"
     echo "     without external access control and safety filtering."
     echo "   • Responsibility: You assume full legal and operational responsibility for"

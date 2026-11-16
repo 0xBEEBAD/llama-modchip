@@ -12,6 +12,7 @@
 #   ./modchip web                   # Open Live Web Chat & Telemetry HUD (http://127.0.0.1:8787)
 #   ./modchip claude [args]         # Launch Claude Code CLI wired to local CPU engine
 #   ./modchip status                # Inspect live server, HugePages & per-UID Modchip SHM
+#   ./modchip checksums             # Print pinned v3.0 Qwen3.8 GGUF & portable binary SHA-256s
 #   ./modchip tui                   # Launch interactive Curses TUI controller
 #   ./modchip stop                  # Stop background server & gateway
 # ==============================================================================
@@ -63,6 +64,12 @@ QWEN38_64GB_ABLIT_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-64gb-ablit/Qwen3.8-
 DSV4_MAXQ_V4_MODEL="${WORKSPACE_DIR}/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
 QWEN38_32GB_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-32gb/Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf"
 QWEN38_32GB_ABLIT_MODEL="${WORKSPACE_DIR}/models/qwen38-maxq-32gb-ablit/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf"
+QWEN38_64GB_SHARD1_SHA256="f2b8bc79acb4b4d79033acd91c9c360ba96da92cd5841512befc450e15f4786f"
+QWEN38_64GB_ABLIT_SHARD1_SHA256="384bc936bdad75383c03e87184056e1cb0b037b0e3f5d5ae5273fd46f55150aa"
+QWEN38_32GB_SHARD1_SHA256="06cb65f9cf6e510cd16500ca1719701a0ffa13dcaa4c4d0cc135e4f2071a8b4d"
+QWEN38_32GB_ABLIT_SHARD1_SHA256="6e8ae62c37bc08de1a69e9e78ab9bae0262f87ffe543595206d1c3b3a810fd67"
+QWEN38_PLE_SHARD2_SHA256="86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e"
+QWEN38_MMPROJ_SHA256="ef2af1d6aa8a22740c7252bc7ce40c5c2f1249aa8d9c8499a4d4572c3cfdf9df"
 VQ3_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf"
 NEMO_MAXQ_16GB_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf"
 NEMOTRON_ABLIT_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf"
@@ -559,13 +566,13 @@ cmd_claude() {
     if [[ "$raw_model" == *[Qq]wen3.8* || "$raw_model" == *[Qq]wen38* ]]; then
         if [[ "$raw_model" == *32[Gg][Bb]* && "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · +0.32% dPPL · Draft-MTP)"
         elif [[ "$raw_model" == *32[Gg][Bb]* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB"
             model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB + Lazy PLE · Draft-MTP)"
         elif [[ "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · +0.18% dPPL · Draft-MTP)"
         else
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
             model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB Full-RAM · Draft-MTP)"
@@ -703,6 +710,16 @@ cmd_download_bin() {
     echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.0 SHA-256 + --version OK)${RESET}"
 }
 
+cmd_checksums() {
+    echo -e "${BOLD}Pinned llama-modchip v3.0 Qwen3.8-Flash-Next GGUF SHA-256 Checksums:${RESET}"
+    printf '%s  %s\n' "$QWEN38_64GB_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf (qwen38-64gb · PPL 3.43)"
+    printf '%s  %s\n' "$QWEN38_64GB_ABLIT_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf (qwen38-64gb-ablit · +0.18% dPPL)"
+    printf '%s  %s\n' "$QWEN38_32GB_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf (qwen38-32gb · PPL 5.80)"
+    printf '%s  %s\n' "$QWEN38_32GB_ABLIT_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf (qwen38-32gb-ablit · +0.32% dPPL)"
+    printf '%s  %s\n' "$QWEN38_PLE_SHARD2_SHA256" "Qwen3.8-Flash-Next-MaxQ-{64GB,32GB}[-Abliterated]-00002-of-00002.gguf (Shared 10.73 GiB PLE)"
+    printf '%s  %s\n' "$QWEN38_MMPROJ_SHA256" "mmproj-Qwen3.8-Flash-Next-BF16.gguf (0.85 GiB Vision Projector)"
+}
+
 cmd_tui() {
     local model="${1:-$DEFAULT_MODEL}"
     exec python3 "${REPO_ROOT}/scripts/llama_modchip.py" --model "$model" --port "$SERVER_PORT" --tui
@@ -728,6 +745,7 @@ case "$SUBCMD" in
     web|ui)          cmd_web "$@" ;;
     claude)          cmd_claude "$@" ;;
     status|info)     cmd_status ;;
+    checksums|sha256) cmd_checksums ;;
     tui)             cmd_tui "$@" ;;
     -h|--help|help)  cmd_help ;;
     *)
