@@ -8,7 +8,11 @@
 //   gcc -O3 -march=native -fopenmp vq3/bench_avx512_vq3.c -lm -o vq3/bench_avx512_vq3
 // ==============================================================================
 
+// <immintrin.h> #errors out on non-x86 targets (e.g. Apple clang on arm64). Guard the
+// include so the file still compiles there and the #else main below can report SKIP.
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h>
+#endif
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
