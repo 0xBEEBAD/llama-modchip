@@ -527,11 +527,15 @@ class ThinkBlockFilter:
                     break
 
             elif self.state == "TOOL":
-                end_tool = self.buf.find("</tool_call>")
+                # Scan the accumulated buffer, not just this delta: the closing tag
+                # can straddle two deltas, and a miss must not append it to tool_buf.
+                # Resume 11 chars back, the longest possible partial-tag prefix.
+                prev_len = len(self.tool_buf)
+                self.tool_buf += self.buf
+                end_tool = self.tool_buf.find("</tool_call>", max(0, prev_len - 11))
                 if end_tool != -1:
-                    self.tool_buf += self.buf[:end_tool]
-                    self.buf = self.buf[end_tool + 12:]
-                    raw_tool = self.tool_buf.strip()
+                    raw_tool = self.tool_buf[:end_tool].strip()
+                    self.buf = self.tool_buf[end_tool + 12:]
                     self.tool_buf = ""
                     self.state = "INIT"
                     parsed = try_parse_tool_call(raw_tool, self.schemas)
@@ -561,7 +565,6 @@ class ThinkBlockFilter:
                             }))
                             self.next_idx += 1
                 else:
-                    self.tool_buf += self.buf
                     self.buf = ""
                     break
 
