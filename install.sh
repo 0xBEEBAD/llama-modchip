@@ -414,7 +414,7 @@ else
             )
             MODEL_SHARD_SIZES=(46449692736 11520055616)
             MODEL_SHARD_SHA256S=(
-                "384bc936bdad75383c03e87184056e1cb0b037b0e3f5d5ae5273fd46f55150aa"
+                "1dac27e81a3a73dcec21edea78f224eb48393a726e3f9ee7676c603d3174e82f"
                 "86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e"
             )
             ;;
@@ -468,7 +468,7 @@ else
             )
             MODEL_SHARD_SIZES=(26821627808 11520055616)
             MODEL_SHARD_SHA256S=(
-                "6e8ae62c37bc08de1a69e9e78ab9bae0262f87ffe543595206d1c3b3a810fd67"
+                "09b54c335505f9f609415dbc774868ad5ae188f17e873dead3ec743ec84e1009"
                 "86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e"
             )
             ;;
