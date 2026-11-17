@@ -685,6 +685,8 @@ if [[ "$USE_PREBUILT" == "1" && -n "$X86_PREBUILT_ASSET" ]]; then
             mv -f "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "${WORKSPACE_DIR}/bin/llama-server-nemotron"
             ln -sf "llama-server-nemotron" "${WORKSPACE_DIR}/bin/${X86_PREBUILT_ASSET}"
             ln -sf "llama-server-nemotron" "${WORKSPACE_DIR}/bin/llama-server-modchip-linux-x86_64"
+            # Purge any stale pre-v3.0 RouteCrack helper binaries linked against old v2.x libggml (GGML_TYPE_COUNT=43)
+            rm -f "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "${WORKSPACE_DIR}/bin/rc_build_tables"
             echo "[+] Installed & verified prebuilt v3.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron (${X86_PREBUILT_ASSET}, SHA-256 + --version OK)"
             PREBUILT_OK=1
         fi
@@ -711,6 +713,7 @@ fi
 
 if [[ "$PREBUILT_OK" == "0" && "$MODEL_FAMILY" == "nemotron" && -d "${LLAMA_BUILD_DIR}/include" ]]; then
     echo "[*] Compiling optional Nemotron RouteCrack vocabulary tokenizer & table builder..."
+    rm -f "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "${WORKSPACE_DIR}/bin/rc_build_tables"
     g++ -O3 -std=c++17 "${REPO_ROOT}/speculative/cpp/rc_tokenize_nemotron.cpp" \
         -o "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" \
         -I"${LLAMA_BUILD_DIR}/include" -I"${LLAMA_BUILD_DIR}/ggml/include" \
@@ -836,12 +839,16 @@ if [[ "$MODEL_FAMILY" == "nemotron" && -f "$MODEL_PATH" && -x "${WORKSPACE_DIR}/
     } > "$CORPUS_TXT"
 
     echo "[*] Tokenizing corpus with native Nemotron 131K vocabulary..."
-    "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "$MODEL_PATH" "$CORPUS_TXT" "$CORPUS_BIN"
-    cp -f "$CORPUS_BIN" "${WORKSPACE_DIR}/routecrack/corpus_nemotron_warm.bin"
-
-    echo "[*] Building 8-level FNV-64 Hash Cascade, 300 Hot Rules & Macro Codebook..."
-    "${WORKSPACE_DIR}/bin/rc_build_tables" "$CORPUS_BIN" "${WORKSPACE_DIR}/routecrack"
-    echo "[+] RouteCrack tables ready in ${WORKSPACE_DIR}/routecrack/"
+    if "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "$MODEL_PATH" "$CORPUS_TXT" "$CORPUS_BIN" \
+        && cp -f "$CORPUS_BIN" "${WORKSPACE_DIR}/routecrack/corpus_nemotron_warm.bin" \
+        && echo "[*] Building 8-level FNV-64 Hash Cascade, 300 Hot Rules & Macro Codebook..." \
+        && "${WORKSPACE_DIR}/bin/rc_build_tables" "$CORPUS_BIN" "${WORKSPACE_DIR}/routecrack"; then
+        echo "[+] RouteCrack tables ready in ${WORKSPACE_DIR}/routecrack/"
+    else
+        rm -f "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "${WORKSPACE_DIR}/bin/rc_build_tables"
+        echo "[!] Optional offline RouteCrack bootstrap skipped (stale pre-v3.0 helper binary removed)."
+        echo "[+] Online Stockfish-PVS v2 (192 KB L2-resident Zobrist TT) active — zero offline vocabulary build required."
+    fi
 elif [[ "$MODEL_FAMILY" == "qwen38" ]]; then
     echo "[+] Built-in NextN MTP (blk.48 --spec-type draft-mtp) + online 248K Stockfish-PVS v2 fallback ready (RC_TABLES_DIR=/nonexistent isolated)."
 else
