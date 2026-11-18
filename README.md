@@ -293,11 +293,16 @@ Manual source compilation on Linux or macOS:
 
 ---
 
-## Acknowledgments
+## Ecosystem, Community & Acknowledgments
 
-- **Qwen Team (`Qwen/Qwen3.8-Flash-Next`, [`qwen-community-1.0`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/LICENSE))**, **DeepSeek AI (`deepseek-ai/DeepSeek-V4-Flash-0731`, MIT)**, and **NVIDIA (`NVIDIA-Nemotron-3.5-30B-A3B`, [`OpenMDW-1.1`](https://openmdw.ai/license/1-1/))** for the foundational hybrid architectures, and **`ggml-org/llama.cpp`** for the upstream C/C++ runtime.
-- **Salvatore Sanfilippo ([`@antirez`](https://github.com/antirez))** for single-pass DeepSeek-V4 routed-MoE quantization research and the public `1.5M`-token [`routed-moe-ds4-1p5m.dat`](https://huggingface.co/antirez/deepseek-v4-gguf/blob/f71f23d552d664e523b422157b2befbf74040380/imatrix/DeepSeek-V4-Flash-chat-v2-routed-moe-ds4-1p5m.dat) importance matrix used in `DeepSeek-V4-Flash-0731-MaxQ-v4`.
-- **AtomicChat ([`AtomicChat/dsv4-eval-artifacts`](https://huggingface.co/datasets/AtomicChat/dsv4-eval-artifacts))** for the open `wiki-alt.txt` evaluation corpus, plus community contributors `@notactuallytreyanastasio`, `@austindixson`, `@MR1KRAKEN`, `@jarorosFork`, `@kevinblo`, `@khairullinr`, and everyone on the CPU leaderboard.
+- **Ecosystem & Client Integrations:**
+  - **[`aiko-sudo/LoGPT`](https://github.com/aiko-sudo/LoGPT)** — Private LAN Android + Windows client with native `llama-modchip` server integration, on-device GGUF inference, and multi-threaded Hugging Face downloads.
+- **Community Press & Discussions:**
+  - Special thanks to **`joshcsimmons`** and the Hacker News community ([HN front-page discussion](https://news.ycombinator.com/item?id=50411961)), **[`dr-data/aigc-weekly`](https://github.com/dr-data/aigc-weekly/issues/20)** (`Y26W45`), and everyone testing, packaging, and sharing reproducible benchmarks across Linux, NixOS, macOS, and Windows.
+- **Foundational Models, Research & Contributors:**
+  - **Qwen Team (`Qwen/Qwen3.8-Flash-Next`, [`qwen-community-1.0`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/LICENSE))**, **DeepSeek AI (`deepseek-ai/DeepSeek-V4-Flash-0731`, MIT)**, and **NVIDIA (`NVIDIA-Nemotron-3.5-30B-A3B`, [`OpenMDW-1.1`](https://openmdw.ai/license/1-1/))** for the foundational hybrid architectures, and **`ggml-org/llama.cpp`** for the upstream C/C++ runtime.
+  - **Salvatore Sanfilippo ([`@antirez`](https://github.com/antirez))** for single-pass DeepSeek-V4 routed-MoE quantization research and the public `1.5M`-token [`routed-moe-ds4-1p5m.dat`](https://huggingface.co/antirez/deepseek-v4-gguf/blob/f71f23d552d664e523b422157b2befbf74040380/imatrix/DeepSeek-V4-Flash-chat-v2-routed-moe-ds4-1p5m.dat) importance matrix used in `DeepSeek-V4-Flash-0731-MaxQ-v4`.
+  - **AtomicChat ([`AtomicChat/dsv4-eval-artifacts`](https://huggingface.co/datasets/AtomicChat/dsv4-eval-artifacts))** for the open `wiki-alt.txt` evaluation corpus, plus community code and hardware contributors **`@notactuallytreyanastasio`**, **`@austindixson`**, **`@PStarH`**, **`@MR1KRAKEN`**, **`@jarorosFork`**, **`@pedrosousabarreto`**, **`@aifartist`**, **`@kevinblo`**, **`@khairullinr`**, **`@xma`**, and everyone on the CPU leaderboard.
 
 ---
 
