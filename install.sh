@@ -685,8 +685,9 @@ if [[ "$USE_PREBUILT" == "1" && -n "$X86_PREBUILT_ASSET" ]]; then
             mv -f "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "${WORKSPACE_DIR}/bin/llama-server-nemotron"
             ln -sf "llama-server-nemotron" "${WORKSPACE_DIR}/bin/${X86_PREBUILT_ASSET}"
             ln -sf "llama-server-nemotron" "${WORKSPACE_DIR}/bin/llama-server-modchip-linux-x86_64"
-            # Purge any stale pre-v3.0 RouteCrack helper binaries linked against old v2.x libggml (GGML_TYPE_COUNT=43)
+            # Purge any stale pre-v3.0 RouteCrack helpers and old v2.x shared libs (libggml/libllama)
             rm -f "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "${WORKSPACE_DIR}/bin/rc_build_tables"
+            rm -f "${LLAMA_BUILD_DIR}/build/bin"/libggml* "${LLAMA_BUILD_DIR}/build/bin"/libllama* "${LLAMA_BUILD_DIR}/build/bin"/libmtmd* 2>/dev/null || true
             echo "[+] Installed & verified prebuilt v3.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron (${X86_PREBUILT_ASSET}, SHA-256 + --version OK)"
             PREBUILT_OK=1
         fi
@@ -768,8 +769,19 @@ else
                     echo "[!] Existing file ${SHARD_DEST} has unexpected byte size (${EXISTING_BYTES} != ${MODEL_SHARD_SIZES[$idx]}); re-downloading..."
                     rm -f "$SHARD_DEST"
                 else
-                    echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
-                    continue
+                    if [[ "$MODEL_FAMILY" == "nemotron" && ${#MODEL_SHARD_SHA256S[@]} -gt "$idx" && -n "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
+                        EXISTING_SHA256="$(compute_sha256 "$SHARD_DEST")"
+                        if [[ "$EXISTING_SHA256" != "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
+                            echo "[!] Existing ${SHARD_DEST} is from a pre-v3.0 release (enum 42/43 vs 44/45); re-downloading v3.0 GGUF..."
+                            rm -f "$SHARD_DEST"
+                        else
+                            echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
+                            continue
+                        fi
+                    else
+                        echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
+                        continue
+                    fi
                 fi
             else
                 echo "[+] Found existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
@@ -892,8 +904,10 @@ cat > "${REPO_ROOT}/start_server.sh" <<EOF
 set -euo pipefail
 
 export WORKSPACE_DIR="\${WORKSPACE_DIR:-${WORKSPACE_DIR}}"
-export LD_LIBRARY_PATH="${LLAMA_BUILD_DIR}/build/bin:\${LD_LIBRARY_PATH:-}"
-export DYLD_LIBRARY_PATH="${LLAMA_BUILD_DIR}/build/bin:\${DYLD_LIBRARY_PATH:-}"
+if [[ "${PREBUILT_OK}" == "0" ]]; then
+    export LD_LIBRARY_PATH="${LLAMA_BUILD_DIR}/build/bin:\${LD_LIBRARY_PATH:-}"
+    export DYLD_LIBRARY_PATH="${LLAMA_BUILD_DIR}/build/bin:\${DYLD_LIBRARY_PATH:-}"
+fi
 
 MODEL="${MODEL_PATH}"
 PASS_ARGS=()
