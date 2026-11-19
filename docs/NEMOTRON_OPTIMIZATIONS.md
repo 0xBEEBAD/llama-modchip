@@ -98,3 +98,21 @@ To measure quantization and abliteration fidelity directly against the uncompres
 # 3. Run the 100-Point Quality & Tool-Calling Gate
 ./modchip eval
 ```
+
+### Trunk-only quantization (official Q4_0 experts kept)
+
+The routed experts dominate file size, while the always-active trunk dominates decode. To
+lower only the trunk and copy the experts at their existing type:
+
+```bash
+./scripts/build_trunk_quant.sh --profile trunk-q5 --input /path/to/official-q4_0.gguf --output /path/to/Trunk-Q5.gguf
+./scripts/build_trunk_quant.sh --profile trunk-q4 --input /path/to/official-q4_0.gguf --output /path/to/Trunk-Q4.gguf
+```
+
+`trunk-q5` puts the token embedding, Mamba-2 `ssm_in`/`ssm_out` and shared experts at
+Q5_0; `trunk-q4` puts the same tensors at Q4_0. Both keep the attention projections,
+router and output head at Q8_0 and read the routed-expert type from the GGUF header, so
+llama-quantize copies those tensors instead of requantizing them. On the official Q4_0
+(600 paired BFCL v3 prompts), Q5_0 measured +11% decode at KLD 0.016 with BFCL unchanged
+at 80.5%; Q4_0 measured +18% at KLD 0.034 but lost 8.7 BFCL points, from the Mamba-2 and
+shared-expert weights rather than attention.
