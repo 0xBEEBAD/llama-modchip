@@ -196,6 +196,13 @@ struct RouteCrackNemotronEngine {
                     break;
                 }
                 if (e.ctx_hash == h) {
+                    if (e.total_cnt == 65535) {
+                        e.total_cnt = 0;
+                        for (int q = 0; q < e.n_preds; ++q) {
+                            e.counts[q] = (uint16_t) ((e.counts[q] + 1) >> 1);
+                            e.total_cnt += e.counts[q];
+                        }
+                    }
                     e.total_cnt++;
                     bool found = false;
                     for (int p = 0; p < e.n_preds; ++p) {
@@ -231,6 +238,10 @@ struct RouteCrackNemotronEngine {
                     break;
                 }
                 if (pred.skipgram.table[idx].hash == h) {
+                    if (pred.skipgram.table[idx].total == 65535) {
+                        pred.skipgram.table[idx].total = (uint16_t) ((pred.skipgram.table[idx].total + 1) >> 1);
+                        pred.skipgram.table[idx].hits  = (uint16_t) ((pred.skipgram.table[idx].hits  + 1) >> 1);
+                    }
                     pred.skipgram.table[idx].total++;
                     if (actual == pred.skipgram.table[idx].pred) {
                         pred.skipgram.table[idx].hits++;

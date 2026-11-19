@@ -326,11 +326,12 @@ struct RCHashEntry {
 };
 
 struct RCHashTable {
-    RCHashEntry* entries;
-    uint32_t     n_entries;
-    int          ctx_len;
+    RCHashEntry* entries   = nullptr;
+    uint32_t     n_entries = 0;
+    int          ctx_len   = 0;
 
     bool load(const char* path) {
+        destroy();
         FILE* f = fopen(path, "rb");
         if (!f) return false;
 
@@ -722,14 +723,15 @@ struct RCMacroEntry {
 };
 
 struct RCMacroCodebook {
-    RCMacroEntry* entries;
-    uint32_t      n_entries;
-    int           max_cont;
+    RCMacroEntry* entries   = nullptr;
+    uint32_t      n_entries = 0;
+    int           max_cont  = 0;
 
-    void clear() { entries = nullptr; n_entries = 0; max_cont = 0; }
-    void destroy() { if (entries) { free(entries); entries = nullptr; } }
+    void clear() { destroy(); n_entries = 0; max_cont = 0; }
+    void destroy() { if (entries) { free(entries); entries = nullptr; } n_entries = 0; max_cont = 0; }
 
     bool load(const char* path) {
+        destroy();
         FILE* f = fopen(path, "rb");
         if (!f) return false;
         uint32_t header[2] = {0};
@@ -803,10 +805,14 @@ struct RCMacroCodebook {
 };
 
 struct RCCodebook {
-    RCCodebookEntry* table;
+    RCCodebookEntry* table = nullptr;
 
     void clear() {
-        table = (RCCodebookEntry*)calloc(RC_CB_SIZE, sizeof(RCCodebookEntry));
+        if (!table) {
+            table = (RCCodebookEntry*)calloc(RC_CB_SIZE, sizeof(RCCodebookEntry));
+        } else {
+            memset(table, 0, (size_t)RC_CB_SIZE * sizeof(RCCodebookEntry));
+        }
     }
     void destroy() { if (table) { free(table); table = nullptr; } }
 
@@ -873,10 +879,11 @@ struct RCHotRule {
 };
 
 struct RCHotRules {
-    RCHotRule* rules;
-    uint32_t   n_rules;
+    RCHotRule* rules   = nullptr;
+    uint32_t   n_rules = 0;
 
     bool load(const char* path) {
+        destroy();
         FILE* f = fopen(path, "rb");
         if (!f) return false;
         uint32_t header[4] = {0};
@@ -932,13 +939,13 @@ struct RCHotRules {
 // ════════════════════════════════════════════════════════════
 
 struct RCLogitProbe {
-    float*   W;               // [n_hot × n_feat]
-    float*   bias;            // [n_hot]
-    int32_t* hot_ids;         // token IDs for output classes
-    int32_t* feat_ids;        // token IDs whose logits are features
-    int      n_hot;
-    int      n_feat;
-    bool     ready;
+    float*   W        = nullptr; // [n_hot × n_feat]
+    float*   bias     = nullptr; // [n_hot]
+    int32_t* hot_ids  = nullptr; // token IDs for output classes
+    int32_t* feat_ids = nullptr; // token IDs whose logits are features
+    int      n_hot    = 0;
+    int      n_feat   = 0;
+    bool     ready    = false;
 
     bool load(const char* path) {
         destroy();
@@ -1261,8 +1268,8 @@ struct RCOnlineProbe {
 struct RCPredictor {
     RCTrie           trie;
     RCHashTable      cascade[RC_HASH_CASCADE_MAX];
-    int              n_cascade;
-    int              cascade_k[RC_HASH_CASCADE_MAX];
+    int              n_cascade = 0;
+    int              cascade_k[RC_HASH_CASCADE_MAX] = {0};
     RCPPM            ppm;
     RCSkipgram       skipgram;
     RCCodebook       codebook;
@@ -1270,22 +1277,22 @@ struct RCPredictor {
     RCHotRules       hot_rules;       // distilled decision function for top-48 tokens
     RCLogitProbe     logit_probe;     // predict from model logits (zero overhead)
     RCOnlineProbe    online_probe;    // learns during inference
-    int              draft_min_conf;  // confidence gate: skip cascade if conf < this
+    int              draft_min_conf = 50; // confidence gate: skip cascade if conf < this
     std::mutex       mutex;
 
     // ── Linear Probe: W[n_probe × n_embd] × h → hot token prediction ──
     static const int PROBE_MAX = 200;
-    float*   probe_W;            // [n_probe × n_embd] weights
-    float*   probe_bias;         // [n_probe] bias
-    int32_t  probe_tokens[PROBE_MAX]; // token IDs for each probe class
-    int      probe_n;            // number of probe classes (48 or 200)
-    int      probe_embd;         // embedding dimension
-    bool     probe_ready;        // weights loaded?
+    float*   probe_W    = nullptr;    // [n_probe × n_embd] weights
+    float*   probe_bias = nullptr;    // [n_probe] bias
+    int32_t  probe_tokens[PROBE_MAX] = {0}; // token IDs for each probe class
+    int      probe_n    = 0;          // number of probe classes (48 or 200)
+    int      probe_embd = 0;          // embedding dimension
+    bool     probe_ready = false;     // weights loaded?
 
     // Online collection for probe training
     struct ProbeSample { int32_t token; std::vector<float> emb; };
     std::vector<ProbeSample> probe_samples;
-    bool probe_collecting;
+    bool probe_collecting = false;
 
     bool load_probe(const char* path) {
         if (probe_bias) { free(probe_bias); probe_bias = nullptr; }
@@ -1381,8 +1388,12 @@ struct RCPredictor {
         macro.destroy();
         hot_rules.destroy();
         logit_probe.destroy();
+        if (probe_W) { free(probe_W); probe_W = nullptr; }
+        if (probe_bias) { free(probe_bias); probe_bias = nullptr; }
+        probe_ready = false;
         for (int i = 0; i < n_cascade; i++)
             cascade[i].destroy();
+        n_cascade = 0;
     }
 
     // Load a hash table file (hashconf_kN.bin)
@@ -1562,7 +1573,7 @@ struct RCTreeResult {
     int     n_tokens;     // actual number of tokens in tree
 };
 
-static void rc_build_tree_bfs(RCPredictor* pred, const int32_t* context, int ctx_len,
+static inline void rc_build_tree_bfs(RCPredictor* pred, const int32_t* context, int ctx_len,
                                int budget, RCTreeResult* out) {
     // Initialize
     memset(out, 0, sizeof(RCTreeResult));

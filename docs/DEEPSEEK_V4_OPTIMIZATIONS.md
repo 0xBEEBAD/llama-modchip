@@ -124,7 +124,7 @@ $$\mathbf{h} = \text{SiLU}(\mathbf{W}_{\text{gate}} \mathbf{x}) \odot (\mathbf{W
 
 In **`v3.0`**, the recommended 64 GB `DeepSeek-V4-Flash-0731` checkpoint is **[`DeepSeek-V4-Flash-0731-MaxQ-v4`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF)** (`57.99 GiB` / `62,270,037,248 B`, `--preset dsv4-maxq`), using **100% standard `ggml` types (`0` custom types)** with `34`-layer `2048 -> 1792` ConeCollapse (`wiki-alt.txt` 51-chunk `PPL = 6.8592`, `KLD = 0.6485`, `Top-1 = 73.28%`; see [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)).
 
-For historical comparison, `v2.5.3` shipped four earlier 3-shard `DeepSeek-V4-Flash-0731` checkpoints (in `v3.0`, custom `Fractal-64` and `LUT-VQ3-64` use zero-collision IDs `GGML_TYPE_FRACTAL_64 = 44` and `GGML_TYPE_VQ3_64 = 45` via [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch)):
+For historical comparison, `v2.5.3` shipped four earlier 3-shard `DeepSeek-V4-Flash-0731` checkpoints (in `v3.0+`, custom `Fractal-64` and `LUT-VQ3-64` use zero-collision IDs `GGML_TYPE_FRACTAL_64 = 44` and `GGML_TYPE_VQ3_64 = 45` via [`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch)):
 
 - **Safety-Aligned Default — [`DeepSeek-V4-Flash-0731-MaxQ-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,160` B, `57.54–58.13 GiB` `VmRSS`, `./modchip setup` default `dsv4-maxq`):**
   - Donor-free single-pass quantization across all `1,328 / 1,328` weight tensors directly from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe23eabc4c98b48bffcef5a386062`): `174` dense 100%-active bottleneck tensors (`token_embd`, `output`, `43× attn_q_a`, `43× ffn_{gate,up,down}_shexp` -> `173 × Q6_K + 1 × Q8_0`), `317` MLA/Indexer tensors (`Fractal-64`, `GGML_TYPE_Q2_0 = 42`, `3.75 bpw`), and all `129` 3D routed-MoE tensors quantized single-pass with `@antirez`'s `1.5M`-token `routed-moe-ds4-1p5m.dat` (`@ f71f23d552d6`, calibrated `2026-05-12` on April `DeepSeek-V4-Flash` `chat-v2` activations).
@@ -140,7 +140,7 @@ For historical comparison, `v2.5.3` shipped four earlier 3-shard `DeepSeek-V4-Fl
 # Install & SHA-256 verify the recommended v3.0 100%-standard-ggml DeepSeek-V4-Flash MaxQ-v4 checkpoint (57.99 GiB):
 ./install.sh --preset dsv4-maxq --yes
 
-# Or build the unified llama-modchip v3.0 engine from source (llama.cpp de32b268c + patches/llama-modchip-v3.0.patch):
+# Or build the unified llama-modchip v3.1.0 engine from source (llama.cpp de32b268c + patches/llama-modchip-v3.1.patch):
 BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
 ```
 

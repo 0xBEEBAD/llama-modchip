@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-llama-modchip v3.0 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
+llama-modchip v3.1.0 — Zero-Dependency Interactive Terminal Chat & Shareable Benchmark Suite
 Connects to local Gateway (8787) or llama-server (8789/8080/8001), streams tokens live,
 and reports exact Prefill tok/s, Decode tok/s, TTFT, and NextN Draft-MTP / Stockfish-PVS acceptance.
 """
@@ -716,9 +716,9 @@ def run_benchmark_suite(base_url: str) -> None:
         hw_scorecard = f"Remote ({base_url} — run './modchip bench' on server host for CPU/THP info)"
     aff_header = get_server_affinity_summary(base_url)
     raw_model, model_display, prompt_label = detect_active_model(base_url)
-    spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
+    spec_lbl = "RouteCrack 2.0"
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.0 — Automated 2-Stage CPU Benchmark Suite                      ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.1.0 — Automated 2-Stage CPU Benchmark Suite                      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_header}")
     if aff_header:
@@ -770,7 +770,7 @@ def run_benchmark_suite(base_url: str) -> None:
         ).strip()
     except Exception:
         pass
-    ver_tag = f"v3.0 ({git_rev})" if git_rev else "v3.0"
+    ver_tag = f"v3.1.0 ({git_rev})" if git_rev else "v3.1.0"
     banner_text = f"LLAMA-MODCHIP {ver_tag} BENCHMARK SCORECARD"
     vis_w = sum(2 if ord(ch) > 0xFFFF else 1 for ch in banner_text)
     banner_line = f"║ {banner_text}{' ' * max(1, 83 - vis_w)}║"
@@ -841,7 +841,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
         hw_summary = f"remote endpoint {base_url}"
         hw_banner = f"{BOLD}Remote Endpoint{RESET} ({base_url})"
     raw_model, model_display, prompt_label = detect_active_model(base_url)
-    spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
+    spec_lbl = "RouteCrack 2.0"
     sys_prompt = build_chat_system_prompt(model_display, hw_summary)
     if one_shot_prompt:
         msgs = [
@@ -853,7 +853,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
         return
 
     print(f"{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.0 — Interactive CPU Chat + Live Speculative Telemetry          ║{RESET}")
+    print(f"{BOLD}{CYAN}║ ♟️  llama-modchip v3.1.0 — Interactive CPU Chat + Live Speculative Telemetry          ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"  • Hardware : {hw_banner}")
     print(f"  • Model    : {BOLD}{GREEN}{model_display}{RESET}")
@@ -883,7 +883,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
             continue
         if user_in.lower() in ("/model", "/status"):
             raw_model, model_display, prompt_label = detect_active_model(base_url)
-            spec_lbl = "Draft-MTP" if "Qwen3.8" in prompt_label else "Stockfish-PVS"
+            spec_lbl = "RouteCrack 2.0"
             sys_prompt = build_chat_system_prompt(model_display, hw_summary)
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = sys_prompt
@@ -913,7 +913,7 @@ def run_interactive_chat(base_url: str, one_shot_prompt: Optional[str] = None) -
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="llama-modchip v3.0 Interactive Terminal Chat & Benchmark Client")
+    parser = argparse.ArgumentParser(description="llama-modchip v3.1.0 Interactive Terminal Chat & Benchmark Client")
     parser.add_argument("--url", default=None, help="Server or Gateway base URL (auto-detected by default)")
     parser.add_argument("--bench", action="store_true", help="Run the 2-stage benchmark suite and print shareable scorecard")
     parser.add_argument("-p", "--prompt", default=None, help="Send a single prompt, stream output, print tok/s, and exit")

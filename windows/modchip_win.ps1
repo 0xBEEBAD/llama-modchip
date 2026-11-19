@@ -22,7 +22,7 @@ if (-not (Test-Path $ModelDir)) { New-Item -ItemType Directory -Path $ModelDir |
 function Write-Banner {
     Clear-Host
     Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "  llama-modchip v3.0 -- Windows Hybrid GPU + CPU MoE Edition" -ForegroundColor Green
+    Write-Host "  llama-modchip v3.1.0 -- Windows Hybrid GPU + CPU MoE Edition" -ForegroundColor Green
     Write-Host "  Ottimizzato per NVIDIA RTX / AMD Vulkan (8-16 GB VRAM) + CPU (16-128 GB RAM)" -ForegroundColor White
     Write-Host "================================================================================" -ForegroundColor Cyan
 }
@@ -432,11 +432,15 @@ if ($helpOut -match "--load-mode") {
     $loadModeArgs = @("--no-mmap")
 }
 
-$specArgs = @("--spec-type", "ngram-simple")
-if ($helpOut -match "--spec-ngram-simple-size-n") {
-    $specArgs += @("--spec-ngram-simple-size-n", "3", "--spec-ngram-simple-size-m", "5")
-} elseif ($helpOut -match "--spec-ngram-size-n" -and $helpOut -notmatch "--spec-ngram-size-n[^\r\n]*removed") {
-    $specArgs += @("--spec-ngram-size-n", "3", "--spec-ngram-size-m", "5", "--draft-max", "6")
+if ($helpOut -match "routecrack2") {
+    $specArgs = @("--spec-type", "routecrack2")
+} else {
+    $specArgs = @("--spec-type", "ngram-simple")
+    if ($helpOut -match "--spec-ngram-simple-size-n") {
+        $specArgs += @("--spec-ngram-simple-size-n", "3", "--spec-ngram-simple-size-m", "5")
+    } elseif ($helpOut -match "--spec-ngram-size-n" -and $helpOut -notmatch "--spec-ngram-size-n[^\r\n]*removed") {
+        $specArgs += @("--spec-ngram-size-n", "3", "--spec-ngram-size-m", "5", "--draft-max", "6")
+    }
 }
 
 $serverArgs = @(

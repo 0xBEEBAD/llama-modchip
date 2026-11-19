@@ -5,10 +5,10 @@ web chat. It was written for a **GEEKOM A8: AMD Ryzen 7 8745HS (8 Zen 4 cores wi
 780M iGPU) and 64 GB DDR5**. It also works on other x86 PCs with Fedora.
 
 The script uses:
-- the same llama.cpp version as the Mac test (tag `b10809`, commit `5266f24da`), built from source with
-  the native CPU backend (AVX-512) and the Vulkan backend (Radeon 780M),
-- the same model file (`NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf` from `ggml-org`, SHA-256 checked),
-- stock llama.cpp (6 of 6 experts per token). For the custom `Fractal-64` (`type 42`) or `LUT-VQ3-64` (`type 43`) checkpoints, build the patched engine from the repository root via `../scripts/build_zen5_llama.sh` (or `../modchip setup`) instead.
+- the unified `llama-modchip v3.1.0` engine (`llama.cpp` build `b12416`, commit `de32b268c` + `../patches/llama-modchip-v3.1.patch`), built from source with
+  the native CPU backend (AVX-512 / AVX2) and the Vulkan backend (Radeon 780M),
+- the verified `NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf` model from `ggml-org` (SHA-256 checked), and also supports `MaxQ-16GB` (`0` custom types) as well as zero-collision `Fractal-64` (`GGML_TYPE_FRACTAL_64 = 44`) and `LUT-VQ3-64` (`GGML_TYPE_VQ3_64 = 45`) checkpoints,
+- **`RouteCrack 2.0` (`SPEC=routecrack2`)** speculative decoding by default (with `ngram`, `ngram-map-k`, `mtp`, `mtp+ngram`, and `none` overrides). For full 16 GB / 32 GB / 64 GB fleet management, you can also run `../modchip setup` from the repository root.
 
 ## Quick start
 
@@ -60,7 +60,7 @@ Set environment variables before the command, for example `BACKEND=cpu CTX=26214
 | `HOST` | `127.0.0.1` | `0.0.0.0` makes the web chat available on the LAN (see below) |
 | `PORT` | `8080` | any free port |
 | `CTX` | `131072` | context size in tokens. `262144` (256K) also fits in 64 GB. |
-| `SPEC` | `ngram` | `ngram` (`ngram-mod`), `mtp` (downloads the 1.16 GB MTP head), `mtp+ngram`, `none` |
+| `SPEC` | `routecrack2` | `routecrack2` (unified RouteCrack 2.0), `ngram` (`ngram-mod`), `ngram-map-k`, `mtp` (downloads the 1.16 GB MTP head), `mtp+ngram`, `none` |
 | `THREADS` | physical cores | CPU threads |
 | `UBATCH` | `2048` | physical batch size for prefill |
 | `NEMOTRON_HOME` | `~/nemotron` | folder for llama.cpp, the model, and the API key |

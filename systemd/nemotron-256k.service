@@ -13,7 +13,7 @@ Group=llama
 # Verify your CPU's non-SMT physical core IDs via: python3 scripts/check_cpu_readiness.py
 CPUAffinity=0-15
 
-# Runtime Environment Variables (verified against patches/llama-modchip-v3.0.patch):
+# Runtime Environment Variables (verified against patches/llama-modchip-v3.1.patch):
 # - LLAMA_MOE_TOP_K=4           : Norm-preserving active-expert pruning override (reduces Nemotron 3.5
 #                                 routed experts from 6 -> 4, and Qwen3-30B-A3B from 8 -> 4; surviving
 #                                 4 gates are automatically renormalized via expert_weights_norm=True).
@@ -38,10 +38,11 @@ Environment="LLAMA_KV_L3_WINDOW=2048" "LLAMA_ATTN_WINDOW=0" "LLAMA_ATTN_SINKS=16
 # Mode B (Optional): Ultra-Low-Latency SWA-4096 + 16 Sinks (100% L3-Resident 6.3 MB GQA + 46 Mamba-2 Global SSM Layers)
 # Environment="LLAMA_KV_L3_WINDOW=2048" "LLAMA_ATTN_WINDOW=4096" "LLAMA_ATTN_SINKS=16" "LLAMA_SWA_STRIDE=1" "LLAMA_KV_DISABLE_CHUNKING=1" "LLAMA_RC_ENABLED=1" "LLAMA_RC_CERT_D0=84" "LLAMA_RC_CERT_D1=92" "LLAMA_RC_CERT_D2=96" "RC_TABLES_DIR=/var/lib/llama-modchip/routecrack" "OMP_PROC_BIND=close" "OMP_PLACES=cores"
 
-# Note on --spec-type ngram-simple:
-# common/ngram-map.cpp overrides common_ngram_simple_draft() to hijack the ngram-simple hook and
-# execute the native C++ RouteCrack ensemble (8-level FNV-64 cascade + Online Trie/PPM + Two-Zone
-# 16K Hot / 24K Prefix matcher) in 0.002 ms with zero neural draft model overhead.
+# Note on --spec-type routecrack2:
+# RouteCrack 2.0 unites RCPredictor (8-level FNV-64 cascade + MacroCodebook + Online Trie v2 + PPM + Skipgram),
+# O(1) Indexed Two-Zone 40K Suffix Copy, Stockfish-PVS Zobrist TT + 28-bit mode refutation, and the
+# RouteCrack 2.0 L1 Micro-Arbiter (< 200 ns/step, zero neural draft model overhead).
+# (--spec-type ngram-map-k and --spec-type ngram-simple remain supported for backward compatibility.)
 ExecStart=/usr/local/bin/llama-server \
   --model /var/lib/llama-modchip/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf \
   --port 8789 \
@@ -63,10 +64,7 @@ ExecStart=/usr/local/bin/llama-server \
   --slot-save-path /dev/shm \
   --ctx-checkpoints 64 \
   --checkpoint-min-step 128 \
-  --spec-type ngram-simple \
-  --spec-ngram-simple-size-n 4 \
-  --spec-ngram-simple-size-m 7 \
-  --spec-ngram-simple-min-hits 1 \
+  --spec-type routecrack2 \
   --reasoning-format deepseek \
   --reasoning-budget 0
 Restart=on-failure

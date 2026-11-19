@@ -8,7 +8,7 @@
 #   MODEL, MTP_MODEL   GGUF paths (default: the ggml-org files in the LM Studio model folder)
 #   PORT               default 8789 (the port that gateway/sse_gateway.py expects)
 #   CTX                context size in tokens, default 131072 (262144 is possible, see README)
-#   SPEC               none | ngram | mtp   (default: ngram)
+#   SPEC               routecrack2 (default) | none | ngram | ngram-map-k | mtp
 #   N_CPU_MOE          MoE layers to keep on the CPU side. Empty = let --fit decide.
 #   UBATCH             physical batch size for prefill, default 1024. 2048 prefills ~15% faster on short
 #                      prompts, but at 128K context its 1.8 GiB compute buffer causes a Metal out-of-memory error.
@@ -37,7 +37,7 @@ MODEL="${MODEL:-$MODEL_DIR/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf}"
 MTP_MODEL="${MTP_MODEL:-$MODEL_DIR/mtp-NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf}"
 PORT="${PORT:-8789}"
 CTX="${CTX:-131072}"
-SPEC="${SPEC:-ngram}"
+SPEC="${SPEC:-routecrack2}"
 N_CPU_MOE="${N_CPU_MOE:-}"
 UBATCH="${UBATCH:-1024}"
 CACHE_RAM="${CACHE_RAM:-1024}"
@@ -99,18 +99,29 @@ fi
 case "$SPEC" in
     none)
         ;;
-    ngram)
+    routecrack2)
+        if "$LLAMA_SERVER" --help 2>&1 | grep -q "routecrack2"; then
+            args+=(--spec-type routecrack2)
+        else
+            echo "[run-server] binary lacks routecrack2 (unpatched llama-server); falling back to --spec-type ngram-mod" >&2
+            args+=(--spec-type ngram-mod)
+        fi
+        ;;
+    ngram|ngram-mod)
         args+=(--spec-type ngram-mod)
         ;;
-    mtp)
-        if [[ ! -f "$MTP_MODEL" ]]; then
-            echo "MTP head not found: $MTP_MODEL" >&2
-            exit 1
+    ngram-map-k)
+        args+=(--spec-type ngram-map-k)
+        ;;
+    mtp|draft-mtp)
+        if [[ -f "$MTP_MODEL" ]]; then
+            args+=(--spec-type draft-mtp --spec-draft-model "$MTP_MODEL")
+        else
+            args+=(--spec-type draft-mtp)
         fi
-        args+=(--spec-type draft-mtp --spec-draft-model "$MTP_MODEL")
         ;;
     *)
-        echo "Unknown SPEC=$SPEC (use none, ngram or mtp)" >&2
+        echo "Unknown SPEC=$SPEC (use routecrack2, none, ngram, ngram-map-k or mtp)" >&2
         exit 1
         ;;
 esac

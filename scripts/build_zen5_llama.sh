@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# build_zen5_llama.sh — Build Unified llama-modchip v3.0 Engine
+# build_zen5_llama.sh — Build Unified llama-modchip v3.1.0 Engine (RouteCrack 2.0)
 # Base commit : ggml-org/llama.cpp de32b268c4ad55d45f3b7b16c029f4e077f4ba74
-# Patch       : patches/llama-modchip-v3.0.patch
+# Patch       : patches/llama-modchip-v3.1.patch
 # Architectures: Qwen3.8-Flash-Next (qwen4exp), DeepSeek-V4 (deepseek4), Nemotron-3.5 (nemotron_h_moe), Qwen3.5-MoE
+# Speculative  : RouteCrack 2.0 (--spec-type routecrack2: MTP / RCPredictor + Two-Zone Suffix + Stockfish-PVS + L1 Micro-Arbiter)
 # Custom Types : GGML_TYPE_FRACTAL_64 = 44 (30 B/64, CPU + Metal GPU), GGML_TYPE_VQ3_64 = 45 (24 B/64, CPU)
 #                (Upstream GGML_TYPE_Q2_0 = 42 and GGML_TYPE_F8_E4M3 = 43 remain 100% untouched)
 set -euo pipefail
@@ -10,9 +11,11 @@ set -euo pipefail
 LLAMA_DIR="${1:-./llama.cpp}"
 BUILD_DIR="${BUILD_DIR:-${LLAMA_DIR}/build}"
 LLAMA_COMMIT="de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
+LLAMA_BUILD_NUM="12416"
+export HF_UI_VERSION="${HF_UI_VERSION:-b${LLAMA_BUILD_NUM}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PATCH_FILE="${REPO_ROOT}/patches/llama-modchip-v3.0.patch"
+PATCH_FILE="${REPO_ROOT}/patches/llama-modchip-v3.1.patch"
 OS_NAME="$(uname -s)"
 ARCH_NAME="$(uname -m)"
 NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)"
@@ -34,7 +37,9 @@ reset_tree() {
         "$LLAMA_DIR/ggml/src/vq3_codebook.h" \
         "$LLAMA_DIR/common/rc_predictor.h" \
         "$LLAMA_DIR/common/rc_stockfish.h" \
-        "$LLAMA_DIR/common/rc_trie_v2.h"
+        "$LLAMA_DIR/common/rc_trie_v2.h" \
+        "$LLAMA_DIR/common/rc_arbiter_l1.h" \
+        "$LLAMA_DIR/common/rc_routecrack2.h"
     while read -r created_file; do
         [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
     done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
@@ -59,18 +64,18 @@ if [[ "${RESET_LLAMA_TREE:-0}" == "1" ]]; then
     reset_tree
 fi
 
-echo "[*] Applying unified llama-modchip v3.0 patch ($(basename "$PATCH_FILE"))..."
+echo "[*] Applying unified llama-modchip v3.1 patch ($(basename "$PATCH_FILE"))..."
 if git -C "$LLAMA_DIR" apply --reverse --check "$PATCH_FILE" 2>/dev/null; then
-    echo "[i] llama-modchip-v3.0.patch already applied cleanly in $LLAMA_DIR."
+    echo "[i] llama-modchip-v3.1.patch already applied cleanly in $LLAMA_DIR."
 elif git -C "$LLAMA_DIR" apply --check "$PATCH_FILE" 2>/dev/null; then
     git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-    echo "[+] llama-modchip-v3.0.patch applied cleanly."
+    echo "[+] llama-modchip-v3.1.patch applied cleanly."
 else
-    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying llama-modchip-v3.0.patch..."
+    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying llama-modchip-v3.1.patch..."
     reset_tree
     if git -C "$LLAMA_DIR" apply --check "$PATCH_FILE"; then
         git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-        echo "[+] llama-modchip-v3.0.patch applied cleanly."
+        echo "[+] llama-modchip-v3.1.patch applied cleanly."
     else
         echo "[!] ERROR: Failed to apply $PATCH_FILE onto $LLAMA_DIR (expected commit $LLAMA_COMMIT)." >&2
         exit 1
@@ -112,11 +117,15 @@ else
 
     PORTABLE_LINK_ARGS=()
     if [[ "${PORTABLE_STATIC:-0}" == "1" ]]; then
+        STATIC_GOMP="$("${CXX:-g++}" -print-file-name=libgomp.a 2>/dev/null || true)"
         PORTABLE_LINK_ARGS=(
             -DLLAMA_OPENSSL=OFF
             -DLLAMA_CURL=OFF
             -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
         )
+        if [[ -n "$STATIC_GOMP" && "$STATIC_GOMP" == /* && -f "$STATIC_GOMP" ]]; then
+            PORTABLE_LINK_ARGS+=(-DOpenMP_gomp_LIBRARY="${STATIC_GOMP}")
+        fi
     fi
 
     if [[ "${PORTABLE_X86_ISA:-}" == "avx2" ]]; then
@@ -206,6 +215,7 @@ fi
 echo "[*] Configuring CMake build in ${BUILD_DIR}..."
 cmake -S "$LLAMA_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DLLAMA_BUILD_NUMBER="${LLAMA_BUILD_NUM}" \
     "${CMAKE_ISA_ARGS[@]}"
 
 echo "[*] Building ${BUILD_TARGETS[*]} with ${NPROC} threads..."

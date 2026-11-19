@@ -1,6 +1,25 @@
-# RouteCrack + Stockfish-PVS v2: Catalog of 96+ Draftless Speculative Techniques & Search Integration
+# RouteCrack 2.0 + Stockfish-PVS: Unified 3-Method Speculative Decoding & L1 Micro-Arbiter
 
 *Navigation: [Back to Overview (`README.md`)](../README.md) · [Technical Paper (`ARCHITECTURE.md`)](../ARCHITECTURE.md) · [Technical FAQ (`FAQ.md`)](../FAQ.md)*
+
+---
+
+## 0. `RouteCrack 2.0` (`--spec-type routecrack2`) — Unification of All Three Speculative Families
+
+Starting in **`llama-modchip v3.1.0`**, **`RouteCrack 2.0`** ([`speculative/cpp/rc_routecrack2.h`](cpp/rc_routecrack2.h) + [`speculative/cpp/rc_arbiter_l1.h`](cpp/rc_arbiter_l1.h)) unites **all three** orthogonal speculative mechanisms under a single `832 B` (`13` cache lines) L1d-resident `10 -> 16 -> 1` ClippedReLU micro-network (**`RouteCrack 2.0 L1 Micro-Arbiter`**, `< 250 ns/step` on AVX-512 / AVX2 / ARM64 NEON):
+
+1. **Method 1 — Native `NextN MTP` Neural Anchor (or `RCPredictor` 6-Engine Ensemble on Non-MTP Models)**:
+   - On MTP-equipped models (`Qwen3.8-Flash-Next` `blk.48`), runs 1 single-token MTP decode at `d = 0` (`p_top1`, `p_margin`, `top4_mass`) instead of blind multi-step `lm_head` chaining, with an optional confidence-gated neural stem probe (`d = 1..2`) only when symbolic suffix continuation is absent and `p_surv` exceeds `stem_probe_q0_min`.
+   - On non-MTP models (`NVIDIA-Nemotron-3.5-30B-A3B` and `DeepSeek-V4-Flash-0731` `284B`), runs `RC2PredictorHub` (`8-level FNV-64 Cascade + 300 Hot Rules + 11,382 Macro Chains` when `n_vocab == 131072`, plus prompt-warmed `Online RCTrie v2 + Multi-Order PPM + Skipgram` across arbitrary vocabulary sizes up to `248K`).
+2. **Method 2 — `O(1)` Indexed Two-Zone `40K` Suffix Copy (`16K` Hot Zone + `24K` Prefix Zone)**:
+   - Replaces linear backward context scans with an `O(1)`-undoable 3-gram hash-chain index (`head_all` + `head_prefix`, `< 100 ns` at `64K` context). Supports **Draftless Fast-Path Bypass** (skipping the `d = 0` MTP `lm_head` pass completely on strong `k >= 6` Hot / `k >= 7` Prefix matches) and **Post-Anchor Suffix Extension** (`[..., id_last, t_0] -> [t_1 .. t_4]`), resolving `> 90%` of suffix collisions.
+3. **Method 3 — `Stockfish-PVS` Multi-Order Zobrist TT (`tt6/tt5/tt4/tt3`) + 28-Bit Tagged Mode Refutation**:
+   - Tracks live target-model verifications and refutations via 64-bit Zobrist keys (`tt6`, `tt5`, `tt4`, `tt3`) plus a collision-free 2KB 28-bit tagged token-mode refutation table (`tok_refute_table`), immediately halting raw `\n` suffix copies inside JSON string tool arguments while promoting verified MTP / Cascade Top-4 alternatives.
+4. **Hardware-Calibrated `RouteCrack 2.0 L1 Micro-Arbiter` (`rc_arbiter_l1.h`, `832 B` per profile)**:
+   - Evaluates 10 step features (`mtp_p1`, `mtp_margin`, `suffix_match_len`, `suffix_hit_count`, `zone_is_hot`, `sf_tt_wins`, `sf_tt_history`, `depth_d`, `recent_accept_ema`, `is_structural_tok`) and appends token `d` iff marginal expected `tokens / ms` strictly improves under three automatic hardware profiles:
+     - `kRC2DefaultArbiter`: Native `NextN MTP` models (`Qwen3.8-Flash-Next` `64GB` & `32GB`)
+     - `kRC2DraftlessArbiter`: Fast/medium non-MTP Mamba-2+MoE models (`NVIDIA-Nemotron-3.5-30B-A3B` `16GB`)
+     - `kRC2HeavyMoEDraftlessArbiter`: Bandwidth-bound `> 35 GiB` 256-expert MoE models (`DeepSeek-V4-Flash-0731` `284B`)
 
 ---
 

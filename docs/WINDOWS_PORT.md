@@ -1,21 +1,21 @@
-# llama-modchip on Windows — Porting Notes & Benchmarks (`v3.0`)
+# llama-modchip on Windows — Porting Notes & Benchmarks (`v3.1.0`)
 
-**Project:** `llama-modchip` `v3.0` (`Qwen3.8-Flash-Next-MaxQ-64GB` `53.99 GiB` & `MaxQ-32GB` `35.71 GiB`, `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB`, and `NVIDIA-Nemotron-3.5-30B-A3B` `VQ3-64` `13.30 GiB` / `MaxQ-16GB` `~13.3 GiB` / `Abliterated-VQ3-64` `13.30 GiB`)
+**Project:** `llama-modchip` `v3.1.0` (`Qwen3.8-Flash-Next-MaxQ-64GB` `53.99 GiB` & `MaxQ-32GB` `35.71 GiB`, `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB`, and `NVIDIA-Nemotron-3.5-30B-A3B` `VQ3-64` `13.30 GiB` / `MaxQ-16GB` `~13.3 GiB` / `Abliterated-VQ3-64` `13.30 GiB`)
 **Test machine:** AMD Ryzen 7 9800X3D (8C/16T, 96 MB L3) · 64 GB DDR5 · NVIDIA RTX 4070 Ti 12 GB · NVMe PCIe 5.0
 **OS:** Windows 11 Pro · engine built with MinGW-w64 GCC (UCRT64) + CMake + Ninja, `-march=native` (AVX-512F/BW/VBMI/VNNI/BF16)
-**Original Port & 1M-Context Verification:** [`@MR1KRAKEN`](https://github.com/MR1KRAKEN) ([PR #27](https://github.com/synchopate/llama-modchip/pull/27), [Issue #28](https://github.com/synchopate/llama-modchip/issues/28)); x64 AVX-512 ABI & `VQ3` update in `commit 54c89bf` ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)); unified `v3.0` rebase on `llama.cpp` `de32b268c`
+**Original Port & 1M-Context Verification:** [`@MR1KRAKEN`](https://github.com/MR1KRAKEN) ([PR #27](https://github.com/synchopate/llama-modchip/pull/27), [Issue #28](https://github.com/synchopate/llama-modchip/issues/28)); x64 AVX-512 ABI & `VQ3` update in `commit 54c89bf` ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)); unified `v3.1.0` `RouteCrack 2.0` rebase on `llama.cpp` `de32b268c`
 
 ---
 
-## 1. Custom vs. Standard Tensor Types in `v3.0`
+## 1. Custom vs. Standard Tensor Types in `v3.1.0`
 
-In `v3.0`, **`Qwen3.8-Flash-Next-MaxQ-64GB/32GB`**, **`DeepSeek-V4-Flash-0731-MaxQ-v4`**, and **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched), while CPU-Turbo `Nemotron-VQ3-64` (`13.30 GiB`) uses zero-collision **`GGML_TYPE_FRACTAL_64 = 44`** (`30 B / 64 W`) and **`GGML_TYPE_VQ3_64 = 45`** (`24 B / 64 W`). Stock upstream `llama.cpp` binaries do not register types `44`/`45` (and lack `v3.0`'s AVX-512 GDN recurrence, zero-copy 3D MoE `mmap` repack preservation, and `deepseek4` ConeCollapse loader).
+In `v3.1.0`, **`Qwen3.8-Flash-Next-MaxQ-64GB/32GB`**, **`DeepSeek-V4-Flash-0731-MaxQ-v4`**, and **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched), while CPU-Turbo `Nemotron-VQ3-64` (`13.30 GiB`) uses zero-collision **`GGML_TYPE_FRACTAL_64 = 44`** (`30 B / 64 W`) and **`GGML_TYPE_VQ3_64 = 45`** (`24 B / 64 W`). Stock upstream `llama.cpp` binaries do not register types `44`/`45` (and lack `v3.1.0`'s `RouteCrack 2.0` + `RouteCrack 2.0 L1 Micro-Arbiter`, AVX-512 GDN recurrence, zero-copy 3D MoE `mmap` repack preservation, and `deepseek4` ConeCollapse loader).
 
 ## 2. What had to change for Windows
 
 The shipped POSIX scripts (`install.sh`, `modchip`, `scripts/build_zen5_llama.sh`) rely on Linux/macOS APIs (`taskset`, `/dev/shm/llama_modchip_<uid>.bin`, `sys/mman.h`), and GCC/MinGW-w64 on Windows x64 differs from Linux System V AMD64 in both ABI register preservation and PE/COFF `.rdata` alignment.
 
-Five source and toolchain fixes are integrated into [`patches/llama-modchip-v3.0.patch`](../patches/llama-modchip-v3.0.patch) and [`windows/build_patched_engine.ps1`](../windows/build_patched_engine.ps1):
+Five source and toolchain fixes are integrated into [`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch) and [`windows/build_patched_engine.ps1`](../windows/build_patched_engine.ps1):
 
 | # | File | Problem | Fix |
 | :-- | :--- | :--- | :--- |
@@ -23,21 +23,21 @@ Five source and toolchain fixes are integrated into [`patches/llama-modchip-v3.0
 | 2 | `ggml/src/ggml-cpu/ggml-cpu.c` | `__thread` and `__attribute__((aligned(64)))` are GCC-only | `MC_TLS` = `__declspec(thread)`; buffer aligned with `__declspec(align(64))` under `_MSC_VER` |
 | 3 | `ggml/src/ggml-cpu/arch/x86/quants.c` | `__builtin_ctz(m)` inside the AVX-512 path | MSVC path uses `_BitScanForward` (`mc_ctz32`) |
 | 4 | `src/llama-graph.cpp` | `ggml_dsv4_skip_csa_comp` is defined in a C file but referenced from C++ | C linkage declared under `_MSC_VER`; MinGW behaviour unchanged |
-| 5 | `patches/llama-modchip-v3.0.patch` & `windows/build_patched_engine.ps1` | On Windows x64, `XMM6..XMM15` are callee-saved (`128-bit`), PE/COFF `.rdata` only guarantees 16-byte section alignment (`vmovdqa64` faults on 64-byte tables), and default `1–2 MB` Windows thread stacks overflow during deep graph builds ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)) | Replaced aligned 512-bit constant loads with unaligned `_mm512_loadu_si512` (`vmovdqu64`), isolated heavy AVX-512 kernels to avoid GCC UCRT64 `XMM6..XMM15` prologue/epilogue clobbers, and set `-Wl,--stack,16777216` (`16 MB` stack) |
+| 5 | `patches/llama-modchip-v3.1.patch` & `windows/build_patched_engine.ps1` | On Windows x64, `XMM6..XMM15` are callee-saved (`128-bit`), PE/COFF `.rdata` only guarantees 16-byte section alignment (`vmovdqa64` faults on 64-byte tables), and default `1–2 MB` Windows thread stacks overflow during deep graph builds ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)) | Replaced aligned 512-bit constant loads with unaligned `_mm512_loadu_si512` (`vmovdqu64`), isolated heavy AVX-512 kernels to avoid GCC UCRT64 `XMM6..XMM15` prologue/epilogue clobbers, and set `-Wl,--stack,16777216` (`16 MB` stack) |
 
 One runtime constraint: for `deepseek4`/MLA (and recommended for `qwen4exp`/QSA) the KV cache uses **matching K and V types** (`-ctk q8_0 -ctv q8_0`).
 
 ## 3. Build
 
 ```powershell
-# Unified v3.0 CPU engine (supports Qwen3.8, DeepSeek-V4 284B, & Nemotron-30B — default):
+# Unified v3.1.0 CPU engine (supports Qwen3.8, DeepSeek-V4 284B, & Nemotron-30B — default):
 powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1
 
 # Optional MSVC + CUDA hybrid build:
 powershell -ExecutionPolicy Bypass -File windows\build_patched_engine.ps1 -Cuda
 ```
 
-The script clones `ggml-org/llama.cpp` at **`de32b268c`** (`de32b268c4ad55d45f3b7b16c029f4e077f4ba74`), applies the single unified `patches/llama-modchip-v3.0.patch` (which includes `vq3_codebook.h` for `FRACTAL_64 = 44` / `VQ3_64 = 45`, RouteCrack/Stockfish-PVS headers in `common/`, `qwen4exp` + `deepseek4` + `nemotron_h_moe` optimizations, and Windows x64 portability guards), and builds a statically linked `windows/bin-modchip/llama-server.exe`.
+The script clones `ggml-org/llama.cpp` at **`de32b268c`** (`de32b268c4ad55d45f3b7b16c029f4e077f4ba74`), applies the single unified `patches/llama-modchip-v3.1.patch` (which includes `vq3_codebook.h` for `FRACTAL_64 = 44` / `VQ3_64 = 45`, `RouteCrack 2.0` + `RouteCrack 2.0 L1 Micro-Arbiter` headers in `common/`, `qwen4exp` + `deepseek4` + `nemotron_h_moe` optimizations, and Windows x64 portability guards), and builds a statically linked `windows/bin-modchip/llama-server.exe`.
 
 Key flags: `-DGGML_NATIVE=ON -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_EXE_LINKER_FLAGS="-static -Wl,--stack,16777216" -D_WIN32_WINNT=0x0A00`.
 

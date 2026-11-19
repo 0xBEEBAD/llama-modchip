@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ♟️ ./modchip — Unified CLI for llama-modchip v3.0 (16GB / 32GB / 64GB MaxQ)
+# ♟️ ./modchip — Unified CLI for llama-modchip v3.1.0 (16GB / 32GB / 64GB MaxQ)
 # ==============================================================================
 # Usage:
-#   ./modchip setup [args]          # Install unified v3.0 engine & select 16GB/32GB/64GB GGUF
-#   ./modchip download-bin [dir]    # Download CPU-matched Linux x86_64 v3.0 binary (-avx512 or -avx2)
-#   ./modchip start [model.gguf]    # Start v3.0 CPU/Hybrid Server + Web UI Gateway in background
-#   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s & MTP/PVS telemetry
+#   ./modchip setup [args]          # Install unified v3.1.0 engine & select 16GB/32GB/64GB GGUF
+#   ./modchip download-bin [dir]    # Download CPU-matched Linux x86_64 v3.1.0 binary (-avx512 or -avx2)
+#   ./modchip start [model.gguf]    # Start v3.1.0 CPU/Hybrid Server + Web UI Gateway in background
+#   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s & RouteCrack 2.0 telemetry
 #   ./modchip bench                 # Run 2-stage speed test & print shareable CPU scorecard
 #   ./modchip eval [args]           # Run 100-pt Quality, Tool-Calling, Coding & Needle Gate
 #   ./modchip web                   # Open Live Web Chat & Telemetry HUD (http://127.0.0.1:8787)
 #   ./modchip claude [args]         # Launch Claude Code CLI wired to local CPU engine
 #   ./modchip status                # Inspect live server, HugePages & per-UID Modchip SHM
-#   ./modchip checksums             # Print pinned v3.0 Qwen3.8 GGUF & portable binary SHA-256s
+#   ./modchip checksums             # Print pinned v3.1.0 Fleet GGUF & portable binary SHA-256s
 #   ./modchip tui                   # Launch interactive Curses TUI controller
 #   ./modchip stop                  # Stop background server & gateway
 # ==============================================================================
@@ -285,7 +285,7 @@ cmd_start() {
 
     if [[ ! -f "$model" ]]; then
         echo -e "${YELLOW}[!] Model file not found at: ${model}${RESET}"
-        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the v3.0 engine & select your RAM tier (16 GB / 32 GB / 64 GB),"
+        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the v3.1.0 engine & select your RAM tier (16 GB / 32 GB / 64 GB),"
         echo -e "    • Or bring your own GGUF: ${BOLD}./modchip start /path/to/your_model.gguf${RESET}"
         exit 1
     fi
@@ -321,7 +321,7 @@ cmd_start() {
             echo -e "${YELLOW}[!] start_server.sh not found. Running './modchip setup --skip-model --model $model' first...${RESET}"
             "${REPO_ROOT}/install.sh" --skip-model --model "$model"
         fi
-        echo -e "${CYAN}[*] Starting llama-modchip v3.0 Engine ($(basename "$model")) in background...${RESET}"
+        echo -e "${CYAN}[*] Starting llama-modchip v3.1.0 Engine ($(basename "$model")) in background...${RESET}"
         SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
         echo $! > "$SERVER_PID_FILE"
         if [[ -n "$explicit_model" ]]; then
@@ -416,7 +416,7 @@ cmd_start() {
     fi
 
     echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${GREEN}║    llama-modchip v3.0 is LIVE — Choose how you want to interact:             ║${RESET}"
+    echo -e "${BOLD}${GREEN}║   llama-modchip v3.1.0 is LIVE — Choose how you want to interact:            ║${RESET}"
     echo -e "${BOLD}${GREEN}╠══════════════════════════════════════════════════════════════════════════════╣${RESET}"
     echo -e "  🌐 ${BOLD}Live Web Chat & Telemetry HUD${RESET} : ${CYAN}http://${GATEWAY_HOST}:${GATEWAY_PORT}${RESET}"
     echo -e "  💬 ${BOLD}Interactive Terminal Chat${RESET}     : ${GREEN}./modchip chat${RESET}"
@@ -505,7 +505,7 @@ ensure_ready_and_running() {
         return 0
     fi
     if [[ ! -f "$DEFAULT_MODEL" ]] || [[ ! -x "${WORKSPACE_DIR}/bin/llama-server-nemotron" ]]; then
-        echo -e "${CYAN}[*] First run detected — installing v3.0 engine & downloading model automatically...${RESET}"
+        echo -e "${CYAN}[*] First run detected — installing v3.1.0 engine & downloading model automatically...${RESET}"
         "${REPO_ROOT}/install.sh"
         DEFAULT_MODEL="$(resolve_default_model)"
     fi
@@ -549,7 +549,7 @@ cmd_quantize() {
     if [[ $# -gt 0 && -x "$qbin" ]]; then
         exec "$qbin" "$@"
     fi
-    echo -e "${CYAN}[i] Pre-quantized MaxQ v3.0 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
+    echo -e "${CYAN}[i] Pre-quantized MaxQ v3.1.0 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
     echo -e "    Run ${BOLD}./modchip setup${RESET} to download & verify any Aligned or Abliterated checkpoint."
     echo -e "    For standard GGUF quantization via llama-quantize, install binaries with ${BOLD}./modchip download-bin${RESET}."
 }
@@ -573,16 +573,16 @@ cmd_claude() {
     if [[ "$raw_model" == *[Qq]wen3.8* || "$raw_model" == *[Qq]wen38* ]]; then
         if [[ "$raw_model" == *32[Gg][Bb]* && "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · +0.32% dPPL · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · +0.32% dPPL · RouteCrack 2.0)"
         elif [[ "$raw_model" == *32[Gg][Bb]* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB + Lazy PLE · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB + Lazy PLE · RouteCrack 2.0)"
         elif [[ "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · +0.18% dPPL · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · +0.18% dPPL · RouteCrack 2.0)"
         else
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB Full-RAM · Draft-MTP)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB Full-RAM · RouteCrack 2.0)"
         fi
     elif [[ "$raw_model" == *[Dd]eep[Ss]eek* ]]; then
         if [[ "$raw_model" == *[Mm]ax[Qq]*[Vv]4* ]]; then
@@ -604,13 +604,13 @@ cmd_claude() {
     elif [[ "$raw_model" == *[Nn]emotron* ]]; then
         if [[ "$raw_model" == *[Aa]bliterated* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.0 VQ3-64 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.0 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
         elif [[ "$raw_model" == *[Mm]ax[Qq]*16* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B-A3B Hybrid Mamba-2 · Standard ggml · CPU/Metal/CUDA)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B-A3B Hybrid Mamba-2 · Standard ggml · RouteCrack 2.0 · CPU/Metal/CUDA)"
         elif [[ "$raw_model" == *[Vv][Qq]3* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.0 VQ3-64 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.0 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
         else
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64"
             model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B-A3B Hybrid Mamba-2 · 256K CPU)"
@@ -648,27 +648,27 @@ cmd_download_bin() {
     local flags=""
     [[ -r /proc/cpuinfo ]] && flags="$(grep -m1 -E '^flags' /proc/cpuinfo || true)"
     local isa_suffix="avx2"
-    local srv_sha256="0f0c07f97a98d8aeb9a012264fdeff5a787d2104a2afb122052bfe0a21c2d1a9"
-    local cli_sha256="49a918206afe371d16ab14fd66d9cc87e35c7f8c0471c2cc13c759f2e0350d03"
-    local bnc_sha256="fa8a055799bb2f65df8c6077f1377b81bfeda4efe3851639d05c1b44c3fa45e8"
-    local ppl_sha256="f77c3581d37fa6920daec6938abc5767675b430130eed03ec05e68c6e6d4b624"
-    local qnt_sha256="521d9bf53f888c71e158732cd2c0b14e80a5e3d2005aed5f7a3e204ebfba9bbb"
+    local srv_sha256="32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee"
+    local cli_sha256="1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2"
+    local bnc_sha256="a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617"
+    local ppl_sha256="071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724"
+    local qnt_sha256="1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576"
     if echo "$flags" | grep -q "avx512f" && echo "$flags" | grep -qE "avx512_?vbmi" && echo "$flags" | grep -qE "avx512_?vnni"; then
         isa_suffix="avx512"
-        srv_sha256="54af3232375ede820f91143c106a594c83b815a3dca66fe98ab08bcb8b63d4f0"
-        cli_sha256="531d870988dcc580322341d2bbd7f0cf6b6cc3b3376a2e86d092a021f7cddba2"
-        bnc_sha256="7ad8253fb9c3a779be58122adc51ea9786bb391acb49d3cbfa6280cedb01e9d8"
-        ppl_sha256="003f452008972fb8696f7ea2800cfede360ba2a2c32f0a605fba2463b66bcadb"
-        qnt_sha256="befa4842fa09a061d4fe3376d226ed4ad2dafa8c149db10c06b37f85e59e3f94"
+        srv_sha256="6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6"
+        cli_sha256="882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a"
+        bnc_sha256="607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f"
+        ppl_sha256="a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53"
+        qnt_sha256="97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2"
     elif ! echo "$flags" | grep -q "avx2"; then
         echo -e "${YELLOW}[!] CPU lacks AVX2; run './modchip setup --source' to compile scalar/AVX1 fallback from source.${RESET}"
         exit 1
     fi
     local srv_asset="llama-server-modchip-linux-x86_64-${isa_suffix}"
     local cli_asset="llama-cli-modchip-linux-x86_64-${isa_suffix}"
-    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.0"
+    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.1.0"
     local fallback_url="https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main"
-    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.0 ${srv_asset} & ${cli_asset} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
+    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.1.0 ${srv_asset} & ${cli_asset} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
     curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${base_url}/${srv_asset}" \
         || curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${fallback_url}/${srv_asset}"
     local actual_srv_sha
@@ -714,33 +714,33 @@ cmd_download_bin() {
             fi
         fi
     done
-    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.0 SHA-256 + --version OK)${RESET}"
+    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.1.0 SHA-256 + --version OK)${RESET}"
 }
 
 cmd_checksums() {
-    echo -e "${BOLD}Pinned llama-modchip v3.0 Fleet GGUF & Binary SHA-256 Checksums:${RESET}"
-    echo "# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ (v3.0)"
+    echo -e "${BOLD}Pinned llama-modchip v3.1.0 Fleet GGUF & Binary SHA-256 Checksums:${RESET}"
+    echo "# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ"
     printf '%s  %s\n' "$QWEN38_64GB_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf (46,449,692,736 B · qwen38-64gb)"
     printf '%s  %s\n' "$QWEN38_64GB_ABLIT_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf (46,449,692,736 B · qwen38-64gb-ablit)"
     printf '%s  %s\n' "$QWEN38_32GB_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf (26,821,627,808 B · qwen38-32gb)"
     printf '%s  %s\n' "$QWEN38_32GB_ABLIT_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf (26,821,627,808 B · qwen38-32gb-ablit)"
     printf '%s  %s\n' "$QWEN38_PLE_SHARD2_SHA256" "Qwen3.8-Flash-Next-MaxQ-{64GB,32GB}[-Abliterated]-00002-of-00002.gguf (11,520,055,616 B · Shared PLE)"
     printf '%s  %s\n' "$QWEN38_MMPROJ_SHA256" "mmproj-Qwen3.8-Flash-Next-BF16.gguf (907,542,880 B · Vision Projector)"
-    echo "# 64 GB Tier — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B · v3.0)"
+    echo "# 64 GB Tier — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B)"
     printf '%s  %s\n' "$DSV4_MAXQ_V4_SHARD1_SHA256" "DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf (5,258,336 B · dsv4-maxq)"
     printf '%s  %s\n' "$DSV4_MAXQ_V4_SHARD2_SHA256" "DeepSeek-V4-Flash-0731-MaxQ-v4-00002-of-00003.gguf (35,543,586,816 B · dsv4-maxq)"
     printf '%s  %s\n' "$DSV4_MAXQ_V4_SHARD3_SHA256" "DeepSeek-V4-Flash-0731-MaxQ-v4-00003-of-00003.gguf (26,721,192,096 B · dsv4-maxq)"
-    echo "# 16 GB Tier — NVIDIA-Nemotron-3.5-30B-A3B (v3.0)"
+    echo "# 16 GB Tier — NVIDIA-Nemotron-3.5-30B-A3B"
     printf '%s  %s\n' "$NEMOTRON_MAXQ_16GB_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf (14,382,336,640 B · nemotron-maxq-16gb · 100% std ggml)"
     printf '%s  %s\n' "$NEMOTRON_VQ3_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · nemotron-vq3 · types 44/45)"
     printf '%s  %s\n' "$NEMOTRON_FRACTAL_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · nemotron-fractal · type 44)"
     printf '%s  %s\n' "$NEMOTRON_ABLIT_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · nemotron-ablit · types 44/45)"
-    echo "# Portable llama-modchip v3.0 Linux x86_64 Binaries & Patch (GLIBC <= 2.30)"
-    printf '%s  %s\n' "b14475aa5350d632551b5f4261017e5ccb648750f8c6c9975255a171c367fbf0" "patches/llama-modchip-v3.0.patch"
-    printf '%s  %s\n' "54af3232375ede820f91143c106a594c83b815a3dca66fe98ab08bcb8b63d4f0" "llama-server-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "0f0c07f97a98d8aeb9a012264fdeff5a787d2104a2afb122052bfe0a21c2d1a9" "llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)"
-    printf '%s  %s\n' "531d870988dcc580322341d2bbd7f0cf6b6cc3b3376a2e86d092a021f7cddba2" "llama-cli-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "49a918206afe371d16ab14fd66d9cc87e35c7f8c0471c2cc13c759f2e0350d03" "llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)"
+    echo "# Portable llama-modchip v3.1.0 Linux x86_64 Binaries & Patch (GLIBC <= 2.30)"
+    printf '%s  %s\n' "796b6d3c3659bb3b96910b9de8650b67e6bb93455b055a25cd7148a4bd39b57b" "patches/llama-modchip-v3.1.patch"
+    printf '%s  %s\n' "6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6" "llama-server-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee" "llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)"
+    printf '%s  %s\n' "882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a" "llama-cli-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2" "llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)"
 }
 
 cmd_tui() {

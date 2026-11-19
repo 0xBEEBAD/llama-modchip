@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# install.sh — Interactive Zero-to-Running Installer for llama-modchip (v3.0)
+# install.sh — Interactive Zero-to-Running Installer for llama-modchip (v3.1.0)
 # ==============================================================================
 # Usage:
 #   One-liner (from scratch):
@@ -17,8 +17,8 @@
 #                            16 GB Tier: nemotron-vq3 | nemotron-maxq-16gb | nemotron-ablit
 #   --model <path>         Use an existing local GGUF file instead of downloading
 #   --skip-model           Install engine & scripts without downloading GGUF weights
-#   --prebuilt             Download CPU-matched Linux x86_64 v3.0 binary (-avx512 / -avx2)
-#   --source               Compile unified v3.0 engine locally from source (cmake/g++)
+#   --prebuilt             Download CPU-matched Linux x86_64 v3.1.0 binary (-avx512 / -avx2)
+#   --source               Compile unified v3.1.0 engine locally from source (cmake/g++)
 #   --yes, -y              Non-interactive mode: accept hardware-matched aligned defaults
 #   --accept-abliterated   Confirm opt-in consent when selecting an abliterated preset in --yes mode
 #   --with-mmproj          Also download & pass mmproj-Qwen3.8-Flash-Next-BF16.gguf (0.85 GiB vision projector)
@@ -29,9 +29,9 @@ set -euo pipefail
 
 # If piped via `curl ... | bash`, bootstrap the repository first and re-exec
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
-if [[ -z "$SCRIPT_SOURCE" ]] || [[ ! -f "$(dirname "$SCRIPT_SOURCE")/patches/llama-modchip-v3.0.patch" ]]; then
+if [[ -z "$SCRIPT_SOURCE" ]] || [[ ! -f "$(dirname "$SCRIPT_SOURCE")/patches/llama-modchip-v3.1.patch" ]]; then
     echo "=============================================================================="
-    echo " [*] Bootstrapping llama-modchip v3.0 repository..."
+    echo " [*] Bootstrapping llama-modchip v3.1.0 repository..."
     echo "=============================================================================="
     if [[ ! -d "./llama-modchip" ]]; then
         if command -v git >/dev/null 2>&1; then
@@ -295,9 +295,9 @@ if [[ "$NONINTERACTIVE" != "1" && -t 1 && -r /dev/tty ]]; then
 fi
 
 # Hardware-aware safety-aligned default preset across the 3 RAM Tiers (16 GB / 32 GB / 64 GB):
-#   >= 60 GB RAM (64 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB, NextN draft-mtp, 12.66 t/s)
-#   30..59 GB RAM (32 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + lazy NVMe PLE, 11.45-14.29 t/s)
-#   <  30 GB RAM (16 GB Tier) -> Nemotron-3.5-30B-A3B-VQ3-64 (AVX-512 VBMI CPU-Turbo)
+#   >= 60 GB RAM (64 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB, RouteCrack 2.0, 15.88–21.98 t/s)
+#   30..59 GB RAM (32 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + lazy NVMe PLE, RouteCrack 2.0)
+#   <  30 GB RAM (16 GB Tier) -> Nemotron-3.5-30B-A3B-VQ3-64 (AVX-512 VBMI CPU-Turbo + RouteCrack 2.0)
 #                                or Nemotron-3.5-30B-A3B-MaxQ-16GB (standard ggml CPU/Metal/CUDA)
 if [[ "$TOTAL_RAM_GB" -ge 60 ]]; then
     DEFAULT_PRESET="qwen38-64gb"
@@ -317,29 +317,29 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
     if [[ "$SKIP_MODEL" == "0" && "$IS_INTERACTIVE" == "1" ]]; then
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo " MAXQ v3.0 3-TIER MODEL MATRIX (Detected RAM: ~${TOTAL_RAM_GB} GiB | Physical Cores: ${PHYS_CORES})"
+        echo " MAXQ v3.1.0 3-TIER MODEL MATRIX (Detected RAM: ~${TOTAL_RAM_GB} GiB | Physical Cores: ${PHYS_CORES})"
         echo "------------------------------------------------------------------------------"
         echo "  [64 GB RAM TIER]"
         echo "  1) Qwen3.8-Flash-Next-MaxQ-64GB                 [176.5B (5B Active) · 53.99 GiB · 2 shards]"
-        echo "     Default 64GB Flagship (12.66 t/s draft-mtp · PPL 3.43 · 100% std ggml)"
+        echo "     Default 64GB Flagship (15.88–21.98 t/s RouteCrack 2.0 · PPL 3.43 · 100% std ggml)"
         echo "  2) Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated     [176.5B (5B Active) · 53.99 GiB · 2 shards]"
-        echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated (+0.18% dPPL · PPL 3.44 · NextN draft-mtp)"
+        echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated (+0.18% dPPL · PPL 3.44 · RouteCrack 2.0)"
         echo "  3) DeepSeek-V4-Flash-0731-MaxQ-v4               [284B MoE · 57.99 GiB · 3 shards]"
-        echo "     284B-A13B Alternative (19.2 t/s ngram-simple burst · 100% std ggml)"
+        echo "     284B-A13B Alternative (RouteCrack 2.0 Heavy-MoE Arbiter · 100% std ggml)"
         echo ""
         echo "  [32 GB RAM TIER]"
         echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
-        echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · 11.45–14.29 t/s draft-mtp)"
+        echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · RouteCrack 2.0)"
         echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
-        echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated (+0.32% dPPL · PPL 5.82 · NextN draft-mtp)"
+        echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated (+0.32% dPPL · PPL 5.82 · RouteCrack 2.0)"
         echo ""
         echo "  [16 GB RAM TIER]"
-        echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.0 CPU-Turbo]"
-        echo "     Default 16GB CPU-Turbo (AVX-512 VBMI VQ3_64=45 + FRACTAL_64=44 · 24.2–60.4 t/s)"
+        echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.1 CPU-Turbo]"
+        echo "     Default 16GB CPU-Turbo (AVX-512 VBMI VQ3_64=45 + RouteCrack 2.0 · 28.2–60.4 t/s)"
         echo "  7) NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB        [30B MoE · 13.39 GiB · 100% std ggml]"
         echo "     Universal 16GB (100% standard ggml — CPU, Apple Metal, CUDA & LM Studio)"
-        echo "  8) NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3  [30B MoE · 13.30 GiB · v3.0 Opt-In]"
-        echo "     [OPT-IN UNCENSORED] 16GB v3.0 VQ3-64 (refusal removed)"
+        echo "  8) NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3  [30B MoE · 13.30 GiB · Opt-In]"
+        echo "     [OPT-IN UNCENSORED] 16GB VQ3-64 + RouteCrack 2.0 (refusal removed)"
         echo "------------------------------------------------------------------------------"
         while true; do
             printf " Select model [1-8, Enter=%s]: " "$DEFAULT_MENU_CHOICE"
@@ -475,7 +475,7 @@ else
         6|nemotron-vq3|NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64)
             MODEL_PRESET="nemotron-vq3"
             MODEL_FAMILY="nemotron"
-            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B · 13.30 GiB · v3.0 CPU-Turbo)"
+            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B · 13.30 GiB · v3.1.0 CPU-Turbo)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64-CPU-GGUF"
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf")
@@ -496,7 +496,7 @@ else
             MODEL_PRESET="nemotron-ablit"
             MODEL_FAMILY="nemotron"
             IS_ABLITERATED=1
-            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B · 13.30 GiB · v3.0)"
+            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B · 13.30 GiB · v3.1.0)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64-CPU-GGUF"
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf")
@@ -507,9 +507,9 @@ else
         dsv4-maxq-fractal|dsv4-vq3|dsv4-fractal|dsv4-ablit|dsv4-abliterated)
             LEGACY_DSV4_PRESET="$MODEL_PRESET"
             echo "[!] NOTICE: Legacy v2.5.4 preset '${LEGACY_DSV4_PRESET}' used retired custom tensor type IDs (42/43) that require llama-modchip v2.5.4."
-            echo "    Redirecting cleanly to v3.0 '--preset dsv4-maxq' (DeepSeek-V4-Flash-0731-MaxQ-v4 · 57.99 GiB · 100% standard ggml)."
+            echo "    Redirecting cleanly to v3.1.0 '--preset dsv4-maxq' (DeepSeek-V4-Flash-0731-MaxQ-v4 · 57.99 GiB · 100% standard ggml)."
             if [[ "$LEGACY_DSV4_PRESET" == *ablit* ]]; then
-                echo "    (Tip: For 64 GB opt-in uncensored v3.0 deployment, pass '--preset qwen38-64gb-ablit'.)"
+                echo "    (Tip: For 64 GB opt-in uncensored v3.1.0 deployment, pass '--preset qwen38-64gb-ablit'.)"
             fi
             MODEL_PRESET="dsv4-maxq"
             MODEL_FAMILY="dsv4"
@@ -532,7 +532,7 @@ else
         nemotron-fractal)
             MODEL_PRESET="nemotron-fractal"
             MODEL_FAMILY="nemotron"
-            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B · 14.36 GiB · v3.0)"
+            MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B · 14.36 GiB · v3.1.0)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64-CPU-GGUF"
             MODEL_REV="main"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf")
@@ -551,7 +551,7 @@ else
             ;;
         *)
             echo "[!] ERROR: Unknown --preset '${MODEL_PRESET}'." >&2
-            echo "    Valid v3.0 presets: qwen38-64gb, qwen38-64gb-ablit, dsv4-maxq, qwen38-32gb, qwen38-32gb-ablit, nemotron-vq3, nemotron-maxq-16gb, nemotron-ablit" >&2
+            echo "    Valid v3.1.0 presets: qwen38-64gb, qwen38-64gb-ablit, dsv4-maxq, qwen38-32gb, qwen38-32gb-ablit, nemotron-vq3, nemotron-maxq-16gb, nemotron-ablit" >&2
             exit 1
             ;;
     esac
@@ -608,7 +608,7 @@ if [[ "$IS_ABLITERATED" == "1" ]]; then
     fi
 fi
 
-# Unified v3.0 Engine Installation Mode (Prebuilt binary vs Local Source Build)
+# Unified v3.1.0 Engine Installation Mode (Prebuilt binary vs Local Source Build)
 if [[ "$ENGINE_MODE_EXPLICIT" == "0" ]]; then
     if [[ -n "$X86_PREBUILT_ASSET" ]]; then
         if [[ "$IS_INTERACTIVE" == "1" ]]; then
@@ -616,11 +616,11 @@ if [[ "$ENGINE_MODE_EXPLICIT" == "0" ]]; then
             echo "------------------------------------------------------------------------------"
             echo " ENGINE INSTALLATION MODE (Linux x86_64 — CPUID matched: ${X86_PREBUILT_ASSET})"
             echo "------------------------------------------------------------------------------"
-            echo "  1) Download precompiled v3.0 binary (${X86_PREBUILT_ASSET}) [Recommended, ~5s]"
-            echo "     Unified binary serving Qwen3.8 (32/64GB), DeepSeek-V4 284B & Nemotron-30B"
+            echo "  1) Download precompiled v3.1.0 binary (${X86_PREBUILT_ASSET}) [Recommended, ~5s]"
+            echo "     Unified RouteCrack 2.0 binary serving Qwen3.8, DeepSeek-V4 284B & Nemotron-30B"
             echo "     (static libgomp/libstdc++, GLIBC <= 2.30; zero C++ compiler required)."
-            echo "  2) Compile unified v3.0 engine from source"
-            echo "     Applies patches/llama-modchip-v3.0.patch onto pinned llama.cpp."
+            echo "  2) Compile unified v3.1.0 engine from source"
+            echo "     Applies patches/llama-modchip-v3.1.patch onto pinned llama.cpp."
             echo "------------------------------------------------------------------------------"
             printf " Select engine mode [1-2, Enter=1]: "
             read -r USER_ENGINE_CHOICE < /dev/tty || USER_ENGINE_CHOICE=""
@@ -658,17 +658,17 @@ fi
 
 echo ""
 echo "=============================================================================="
-echo " STEP 2/5: INSTALLING UNIFIED LLAMA-MODCHIP v3.0 ENGINE"
+echo " STEP 2/5: INSTALLING UNIFIED LLAMA-MODCHIP v3.1.0 ENGINE"
 echo "=============================================================================="
 LLAMA_BUILD_DIR="${WORKSPACE_DIR}/llama.cpp"
 
 PREBUILT_OK=0
 if [[ "$USE_PREBUILT" == "1" && -n "$X86_PREBUILT_ASSET" ]]; then
-    ASSET_URL="https://github.com/synchopate/llama-modchip/releases/download/v3.0/${X86_PREBUILT_ASSET}"
+    ASSET_URL="https://github.com/synchopate/llama-modchip/releases/download/v3.1.0/${X86_PREBUILT_ASSET}"
     FALLBACK_ASSET_URL="https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main/${X86_PREBUILT_ASSET}"
-    EXPECTED_BIN_SHA256="0f0c07f97a98d8aeb9a012264fdeff5a787d2104a2afb122052bfe0a21c2d1a9"
-    [[ "$X86_PREBUILT_ASSET" == *-avx512 ]] && EXPECTED_BIN_SHA256="54af3232375ede820f91143c106a594c83b815a3dca66fe98ab08bcb8b63d4f0"
-    echo "[*] CPUID selected portable v3.0 precompiled binary: ${X86_PREBUILT_ASSET}"
+    EXPECTED_BIN_SHA256="32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee"
+    [[ "$X86_PREBUILT_ASSET" == *-avx512 ]] && EXPECTED_BIN_SHA256="6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6"
+    echo "[*] CPUID selected portable v3.1.0 precompiled binary: ${X86_PREBUILT_ASSET}"
     if curl -fL --progress-bar -o "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "$ASSET_URL" \
         || curl -fL --progress-bar -o "${WORKSPACE_DIR}/bin/llama-server-nemotron.part" "$FALLBACK_ASSET_URL"; then
         ACTUAL_BIN_SHA256="$(compute_sha256 "${WORKSPACE_DIR}/bin/llama-server-nemotron.part")"
@@ -688,7 +688,7 @@ if [[ "$USE_PREBUILT" == "1" && -n "$X86_PREBUILT_ASSET" ]]; then
             # Purge any stale pre-v3.0 RouteCrack helpers and old v2.x shared libs (libggml/libllama)
             rm -f "${WORKSPACE_DIR}/bin/rc_tokenize_nemotron" "${WORKSPACE_DIR}/bin/rc_build_tables"
             rm -f "${LLAMA_BUILD_DIR}/build/bin"/libggml* "${LLAMA_BUILD_DIR}/build/bin"/libllama* "${LLAMA_BUILD_DIR}/build/bin"/libmtmd* 2>/dev/null || true
-            echo "[+] Installed & verified prebuilt v3.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron (${X86_PREBUILT_ASSET}, SHA-256 + --version OK)"
+            echo "[+] Installed & verified prebuilt v3.1.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron (${X86_PREBUILT_ASSET}, SHA-256 + --version OK)"
             PREBUILT_OK=1
         fi
     else
@@ -709,7 +709,7 @@ if [[ "$PREBUILT_OK" == "0" ]]; then
     cp -f "${LLAMA_BUILD_DIR}/build/bin/llama-quantize" "${WORKSPACE_DIR}/bin/llama-quantize" 2>/dev/null || true
     cp -f "${LLAMA_BUILD_DIR}/build/bin/llama-perplexity" "${WORKSPACE_DIR}/bin/llama-perplexity" 2>/dev/null || true
     cp -f "${LLAMA_BUILD_DIR}/build/bin/llama-bench" "${WORKSPACE_DIR}/bin/llama-bench" 2>/dev/null || true
-    echo "[+] Installed unified v3.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron"
+    echo "[+] Installed unified v3.1.0 binary: ${WORKSPACE_DIR}/bin/llama-server-nemotron"
 fi
 
 if [[ "$PREBUILT_OK" == "0" && "$MODEL_FAMILY" == "nemotron" && -d "${LLAMA_BUILD_DIR}/include" ]]; then
@@ -862,14 +862,16 @@ if [[ "$MODEL_FAMILY" == "nemotron" && -f "$MODEL_PATH" && -x "${WORKSPACE_DIR}/
         echo "[+] Online Stockfish-PVS v2 (192 KB L2-resident Zobrist TT) active — zero offline vocabulary build required."
     fi
 elif [[ "$MODEL_FAMILY" == "qwen38" ]]; then
-    echo "[+] Built-in NextN MTP (blk.48 --spec-type draft-mtp) + online 248K Stockfish-PVS v2 fallback ready (RC_TABLES_DIR=/nonexistent isolated)."
+    echo "[+] RouteCrack 2.0 (--spec-type routecrack2: NextN MTP + Two-Zone Suffix + Stockfish-PVS + L1 Micro-Arbiter) ready (RC_TABLES_DIR=/nonexistent isolated)."
+elif [[ "$MODEL_FAMILY" == "dsv4" ]]; then
+    echo "[+] RouteCrack 2.0 (--spec-type routecrack2: Heavy-MoE L1 Micro-Arbiter + Two-Zone Suffix + Stockfish-PVS) ready (RC_TABLES_DIR=/nonexistent isolated)."
 else
-    echo "[+] Online Stockfish-PVS v2 (192 KB L2-resident Zobrist TT) active — zero offline vocabulary build required."
+    echo "[+] RouteCrack 2.0 (--spec-type routecrack2: RCPredictor + Two-Zone Suffix + Stockfish-PVS + L1 Micro-Arbiter) ready."
 fi
 
 echo ""
 echo "=============================================================================="
-echo " STEP 5/5: GENERATING AUTO-TUNED v3.0 LAUNCH SCRIPTS"
+echo " STEP 5/5: GENERATING AUTO-TUNED v3.1.0 LAUNCH SCRIPTS"
 echo "=============================================================================="
 if [[ "$MODEL_FAMILY" == "qwen38" ]]; then
     CTX_SIZE=32768
@@ -899,7 +901,7 @@ fi
 
 cat > "${REPO_ROOT}/start_server.sh" <<EOF
 #!/usr/bin/env bash
-# Auto-generated by install.sh (llama-modchip v3.0)
+# Auto-generated by install.sh (llama-modchip v3.1.0)
 # Usage: ./start_server.sh [/path/to/model.gguf] [extra llama-server flags]
 set -euo pipefail
 
@@ -1046,32 +1048,44 @@ if [[ "\${MODEL_ARCH:-}" == "qwen4exp" ]]; then
     if [[ "\${IS_QWEN38_32GB:-0}" == "1" ]]; then
         MODEL_EXTRA_ARGS+=(--temp 0.6 --top-p 0.95 --top-k 20 --presence-penalty 0.2 --repeat-penalty 1.05)
     fi
-    if [[ "\${MODCHIP_SPEC_TYPE:-}" == "ngram-simple" || "\${MODEL_HAS_MTP:-0}" == "0" ]]; then
-        SPEC_ARGS=(--spec-type ngram-simple --spec-ngram-simple-size-n 3 --spec-ngram-simple-size-m 3 --spec-ngram-simple-min-hits 1)
-    else
-        SPEC_ARGS=(--spec-type draft-mtp)
-    fi
 elif [[ "\${MODEL_ARCH:-}" == "deepseek4" ]]; then
     CACHE_V_TYPE="q8_0"
-    SPEC_ARGS=(--spec-type ngram-simple --spec-ngram-simple-size-n 4 --spec-ngram-simple-size-m 7 --spec-ngram-simple-min-hits 1)
     if [[ "${TOTAL_RAM_GB}" -lt 80 ]]; then
         AVAIL_KIB="\$(awk '/MemAvailable:/ {print \$2}' /proc/meminfo 2>/dev/null || echo 62914560)"
         if [[ "\${AVAIL_KIB:-62914560}" -lt 67108864 || "${TOTAL_RAM_GB}" -le 68 ]]; then
             [[ -z "\${MODCHIP_CTX_SIZE:-}" ]] && EFFECTIVE_CTX_SIZE=32768
             [[ -z "\${MODCHIP_UBATCH_SIZE:-}" ]] && UBATCH_SIZE=512
             [[ -z "\${MODCHIP_SLOT_SAVE_PATH:-}" ]] && SLOT_SAVE_DIR="${WORKSPACE_DIR}/cache"
-            echo "[i] 64GB OS Headroom Guard: using -c \${EFFECTIVE_CTX_SIZE} -ub \${UBATCH_SIZE} and disk slot cache (~58.5–59.1 GiB anonymous VmRSS)"
+            echo "[i] 64GB OS Headroom Guard: using -c \${EFFECTIVE_CTX_SIZE} -ub \${UBATCH_SIZE} and disk slot cache"
             echo "    so desktop/OS processes retain >=3.4–4.0 GiB free RAM. (Set MODCHIP_CTX_SIZE=262144 on a dedicated headless node.)"
         fi
     fi
 else
-    SPEC_ARGS=(--spec-type ngram-simple --spec-ngram-simple-size-n 4 --spec-ngram-simple-size-m 7 --spec-ngram-simple-min-hits 1)
     if [[ "${TOTAL_RAM_GB}" -le 18 ]]; then
         [[ -z "\${MODCHIP_CTX_SIZE:-}" ]] && EFFECTIVE_CTX_SIZE=32768
         [[ -z "\${MODCHIP_UBATCH_SIZE:-}" ]] && UBATCH_SIZE=512
         [[ -z "\${MODCHIP_SLOT_SAVE_PATH:-}" ]] && SLOT_SAVE_DIR="${WORKSPACE_DIR}/cache"
         echo "[i] 16GB RAM Swap Guard: defaulting to -c \${EFFECTIVE_CTX_SIZE} -ub \${UBATCH_SIZE} (~14.6 GiB VmRSS) to prevent swap thrashing."
     fi
+fi
+
+# Unified RouteCrack 2.0 speculative engine across all 3 flagship families (honors LLAMA_RC_ENABLED=0 / LLAMA_RC_DISABLE=1 and MODCHIP_SPEC_TYPE override)
+if [[ "\${LLAMA_RC_ENABLED:-1}" == "0" || "\${LLAMA_RC_DISABLE:-0}" == "1" ]]; then
+    SPEC_ARGS=(--spec-type none)
+elif [[ -n "\${MODCHIP_SPEC_TYPE:-}" ]]; then
+    case "\${MODCHIP_SPEC_TYPE}" in
+        none)
+            SPEC_ARGS=(--spec-type none)
+            ;;
+        ngram-simple)
+            SPEC_ARGS=(--spec-type ngram-simple --spec-ngram-simple-size-n 4 --spec-ngram-simple-size-m 7 --spec-ngram-simple-min-hits 1)
+            ;;
+        *)
+            SPEC_ARGS=(--spec-type "\${MODCHIP_SPEC_TYPE}")
+            ;;
+    esac
+else
+    SPEC_ARGS=(--spec-type routecrack2)
 fi
 
 # Container / macOS /dev/shm capacity guard
@@ -1086,7 +1100,7 @@ mkdir -p "\$SLOT_SAVE_DIR" 2>/dev/null || true
 
 LOAD_MODE="\${MODCHIP_LOAD_MODE:-\${DEFAULT_LOAD_MODE}}"
 
-# Default --repack ON across v3.0 (zero-copy 3D MoE mmap preserved on Qwen3.8 + VNNI/AVX2 dense tile repack)
+# Default --repack ON across v3.1.0 (zero-copy 3D MoE mmap preserved on Qwen3.8 + VNNI/AVX2 dense tile repack)
 REPACK_ARGS=()
 [[ "\${USE_REPACK:-1}" == "1" ]] && REPACK_ARGS=(--repack)
 
@@ -1101,7 +1115,7 @@ EXTRA_ARGS_ARR=()
 if [[ -n "\${EXTRA_SERVER_ARGS:-}" ]]; then
     read -r -a EXTRA_ARGS_ARR <<< "\${EXTRA_SERVER_ARGS}"
 fi
-echo "[*] Starting llama-server v3.0 on http://\${SERVER_HOST}:\${SERVER_PORT} (Arch: \${MODEL_ARCH}, Decode: \${DECODE_THREADS}T / Prefill: \${BATCH_THREADS}T [mask: \${TASKSET_MASK}, poll=0], RC_TABLES_DIR=\${RC_TABLES_DIR}, Context: \${EFFECTIVE_CTX_SIZE})..."
+echo "[*] Starting llama-server v3.1.0 on http://\${SERVER_HOST}:\${SERVER_PORT} (Arch: \${MODEL_ARCH}, Decode: \${DECODE_THREADS}T / Prefill: \${BATCH_THREADS}T [mask: \${TASKSET_MASK}, poll=0], RC_TABLES_DIR=\${RC_TABLES_DIR}, Context: \${EFFECTIVE_CTX_SIZE})..."
 exec \${LAUNCH_PREFIX[@]+"\${LAUNCH_PREFIX[@]}"} "${WORKSPACE_DIR}/bin/llama-server-nemotron" \\
   --model "\$MODEL" \\
   --port "\${SERVER_PORT}" \\
@@ -1150,7 +1164,7 @@ EOF
 chmod +x "${REPO_ROOT}/start_gateway.sh"
 
 echo "=============================================================================="
-echo " [+] LLAMA-MODCHIP v3.0 INSTALLATION COMPLETE!"
+echo " [+] LLAMA-MODCHIP v3.1.0 INSTALLATION COMPLETE!"
 echo "=============================================================================="
 echo " Quickest way to start & chat (Unified ./modchip CLI):"
 echo "      ./modchip start        # Starts server + gateway in background"

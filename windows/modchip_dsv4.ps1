@@ -10,6 +10,7 @@
     [int]$NGpuLayers = 0,
     [int]$NCpuMoe    = -1,
     [int]$NPredict   = -1,
+    [string]$SpecType = "routecrack2",
     [switch]$Fast,
     [switch]$NoSpec,
     [switch]$Thinking,
@@ -151,7 +152,7 @@ $modelAlias = if ($isQwen38) { "qwen3.8-flash-next" } elseif ($isNemotron) { "ne
 $kvTypeV    = if ($isNemotron -and $KvType -eq "q8_0") { "q4_0" } else { $KvType }
 if (-not $isNemotron) { $env:RC_TABLES_DIR = "/nonexistent" }
 
-Write-Head ("llama-modchip v3.0 -- {0} on Windows" -f $(if ($isQwen38) { "Qwen3.8-Flash-Next MaxQ" } elseif ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
+Write-Head ("llama-modchip v3.1.0 -- {0} on Windows" -f $(if ($isQwen38) { "Qwen3.8-Flash-Next MaxQ" } elseif ($isNemotron) { "NVIDIA-Nemotron-3.5-30B-A3B" } else { "DeepSeek-V4-Flash 284B" }))
 
 if ($Threads -le 0) { $Threads = [math]::Max(1, $hw.PhysCores - 1) }
 
@@ -252,16 +253,16 @@ if ($isQwen38) {
 if ($Thinking) { $srvArgs += @("--reasoning-budget", "-1") } else { $srvArgs += @("--reasoning-budget", "0") }
 if ($NPredict -ge 0) { $srvArgs += @("-n", "$NPredict") }
 
-if (-not $NoSpec) {
-    if ($isQwen38) {
-        $srvArgs += @("--spec-type", "draft-mtp")
-    } else {
+if (-not $NoSpec -and $SpecType -ne "none") {
+    if ($SpecType -eq "ngram-simple") {
         $srvArgs += @(
             "--spec-type", "ngram-simple",
             "--spec-ngram-simple-size-n", "4",
             "--spec-ngram-simple-size-m", "7",
             "--spec-ngram-simple-min-hits", "1"
         )
+    } else {
+        $srvArgs += @("--spec-type", $SpecType)
     }
 }
 

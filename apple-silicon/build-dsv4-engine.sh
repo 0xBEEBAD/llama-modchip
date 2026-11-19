@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-dsv4-engine.sh — Build unified llama-modchip v3.0 engine on Apple Silicon (Metal + ARM64 NEON SDOT).
+# build-dsv4-engine.sh — Build unified llama-modchip v3.1.0 engine on Apple Silicon (Metal + ARM64 NEON SDOT + RouteCrack 2.0).
 # Supports Qwen3.8-Flash-Next, DeepSeek-V4-Flash, and Nemotron-3.5-30B with a single source tree.
 #
 # Environment:
@@ -30,14 +30,15 @@ fi
 git -C "$LLAMA_SRC" worktree add --detach "$DEST" "$BASE"
 cd "$DEST"
 
-git apply "$REPO/patches/llama-modchip-v3.0.patch"
+git apply "$REPO/patches/llama-modchip-v3.1.patch"
 
 if [[ "${BUILD:-1}" == 0 ]]; then
     echo "[build-modchip-v3] source tree ready in $DEST (BUILD=0)" >&2
     exit 0
 fi
 
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
+export HF_UI_VERSION="${HF_UI_VERSION:-b12416}"
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_NUMBER=12416 -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
     -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=ON -DLLAMA_CURL=OFF
 cmake --build build -j "$JOBS" --target llama-server llama-bench llama-cli llama-perplexity llama-quantize test-backend-ops test-quantize-fns test-llama-archs
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run-dsv4.sh — DeepSeek-V4-Flash-0731-Fractal (284B, 56.56 GiB) on an Apple Silicon Mac with 64 GB.
 #
-# Build the engine first with ./build-dsv4-engine.sh (unified llama-modchip v3.0:
-# llama.cpp de32b268c + patches/llama-modchip-v3.0.patch). Stock llama.cpp cannot load
+# Build the engine first with ./build-dsv4-engine.sh (unified llama-modchip v3.1.0:
+# llama.cpp de32b268c + patches/llama-modchip-v3.1.patch). Stock llama.cpp cannot load
 # FRACTAL_64 (44) / VQ3_64 (45) GGUFs.
 #
 # PROFILE=fast    (default) experts of 5 pure-IQ1_S layers on the CPU. ~51.8 GB on the GPU, so it needs
@@ -41,6 +41,7 @@ PORT="${PORT:-8789}"
 CTX="${CTX:-32768}"
 THREADS="${THREADS:-12}"
 PROFILE="${PROFILE:-fast}"
+SPEC="${SPEC:-routecrack2}"
 
 case "$PROFILE" in
     fast)   cpu_layers='10|12|14|16|18'; need_mb=57344 ;;
@@ -60,6 +61,8 @@ fi
 
 echo "[run-dsv4] profile=$PROFILE cpu_expert_layers=$cpu_layers ctx=$CTX threads=$THREADS port=$PORT" >&2
 echo "[run-dsv4] if the log shows kIOGPUCommandBufferCallbackErrorOutOfMemory, output is invalid: stop and use PROFILE=nosudo" >&2
+SPEC_ARGS=()
+[[ "$SPEC" != "none" ]] && SPEC_ARGS=(--spec-type "$SPEC")
 export RC_TABLES_DIR="/nonexistent"
 exec "$LLAMA_DIR/bin/llama-server" \
     --model "$MODEL" \
@@ -74,4 +77,5 @@ exec "$LLAMA_DIR/bin/llama-server" \
     --parallel 1 \
     --jinja \
     --threads "$THREADS" \
+    "${SPEC_ARGS[@]}" \
     "$@"

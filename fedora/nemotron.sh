@@ -2,8 +2,8 @@
 # nemotron.sh — Nemotron 3.5 Lightning 30B-A3B with the llama.cpp web chat on Fedora.
 #
 # Target: GEEKOM A8, AMD Ryzen 7 8745HS (8 Zen 4 cores with AVX-512, Radeon 780M iGPU), 64 GB DDR5.
-# It uses the same llama.cpp version (b10809) and the same model file (Q4_0 from ggml-org) as
-# apple-silicon/, without the x86 patch of this repository.
+# Builds llama.cpp @ de32b268c (b12416) + patches/llama-modchip-v3.1.patch (RouteCrack 2.0 + zero-collision
+# types 44/45) and runs NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0 (or MaxQ-16GB / VQ3-64) with SPEC=routecrack2.
 #
 # Usage:
 #   ./nemotron.sh          set up (first time only), then start the web chat
@@ -21,7 +21,7 @@
 #   HOST           127.0.0.1 (default, this PC only) or 0.0.0.0 (LAN access with an API key)
 #   PORT           default 8080
 #   CTX            context size in tokens, default 131072 (262144 also fits in 64 GB)
-#   SPEC           ngram (default) | mtp | mtp+ngram | none
+#   SPEC           routecrack2 (default) | ngram | ngram-map-k | mtp | mtp+ngram | none
 #   THREADS        CPU threads, default: number of physical cores
 #   UBATCH         physical batch size, default 2048
 #   JOBS           parallel compile jobs, default: all CPU threads (use less on a machine with little RAM)
@@ -29,8 +29,10 @@
 # Extra arguments after "run" go to llama-server unchanged.
 set -euo pipefail
 
-LLAMA_TAG="b10809"
-LLAMA_COMMIT="5266f24da75dc449bd56cbed7addb9c8e4a6a73e"
+LLAMA_TAG="b12416"
+LLAMA_COMMIT="de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
+SCRIPT_DIR_FEDORA="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATCH_V31="${SCRIPT_DIR_FEDORA}/../patches/llama-modchip-v3.1.patch"
 MODEL_REPO="ggml-org/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF"
 MODEL_REV="8cd082170ed313484be1cf44f256a5caa2cfdad3"
 MODEL_FILE="NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf"
@@ -48,7 +50,7 @@ BACKEND="${BACKEND:-auto}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8080}"
 CTX="${CTX:-131072}"
-SPEC="${SPEC:-ngram}"
+SPEC="${SPEC:-routecrack2}"
 UBATCH="${UBATCH:-2048}"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -102,6 +104,12 @@ build_llama() {
     if [[ -x "$BIN_DIR/llama-server" && -x "$BIN_DIR/llama-bench" ]]; then
         log "llama.cpp $LLAMA_TAG is already built"
         return
+    fi
+    if [[ -f "$PATCH_V31" ]]; then
+        if git -C "$LLAMA_DIR" apply --check "$PATCH_V31" 2>/dev/null; then
+            log "applying llama-modchip-v3.1.patch (RouteCrack 2.0)"
+            git -C "$LLAMA_DIR" apply "$PATCH_V31"
+        fi
     fi
     # The build downloads the web UI for its build number from Hugging Face. Set the version explicitly,
     # so that a clone without the full history also gets the web UI that belongs to this server.
@@ -215,14 +223,23 @@ cmd_run() {
 
     case "$SPEC" in
         none) ;;
+        routecrack2)
+            if "$BIN_DIR/llama-server" --help 2>&1 | grep -q "routecrack2"; then
+                args+=(--spec-type routecrack2)
+            else
+                log "binary lacks routecrack2; falling back to --spec-type ngram-mod"
+                args+=(--spec-type ngram-mod)
+            fi
+            ;;
         ngram) args+=(--spec-type ngram-mod) ;;
+        ngram-map-k) args+=(--spec-type ngram-map-k) ;;
         mtp|mtp+ngram)
             local types=draft-mtp
             [[ "$SPEC" == mtp+ngram ]] && types=draft-mtp,ngram-mod
             args+=(--spec-type "$types" --spec-draft-model "$MODEL_DIR/$MTP_FILE" --spec-draft-n-max 1)
             [[ "$backend" == cpu ]] && args+=(--spec-draft-device none)
             ;;
-        *) die "unknown SPEC=$SPEC (use ngram, mtp, mtp+ngram or none)" ;;
+        *) die "unknown SPEC=$SPEC (use routecrack2, ngram, ngram-map-k, mtp, mtp+ngram or none)" ;;
     esac
 
     case "$HOST" in

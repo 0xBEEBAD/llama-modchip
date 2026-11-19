@@ -17,7 +17,9 @@ mkdir -p "$OUT_DIR"
 mode_args() {
     case "$1" in
         none)         echo "SPEC=none" ;;
+        routecrack2)  echo "SPEC=routecrack2" ;;
         ngram-mod)    echo "SPEC=ngram" ;;
+        ngram-map-k)  echo "SPEC=ngram-map-k" ;;
         ngram-simple) echo "SPEC=none --spec-type ngram-simple --spec-ngram-simple-size-n 4 --spec-ngram-simple-size-m 5 --spec-ngram-simple-min-hits 1" ;;
         mtp-1)        echo "SPEC=mtp --spec-draft-n-max 1" ;;
         mtp-2)        echo "SPEC=mtp --spec-draft-n-max 2" ;;
@@ -29,7 +31,7 @@ mode_args() {
 
 modes=("$@")
 if [[ ${#modes[@]} -eq 0 ]]; then
-    modes=(none ngram-mod ngram-simple mtp-1 mtp-3 mtp+ngram)
+    modes=(none routecrack2 ngram-mod ngram-simple mtp-1 mtp-3 mtp+ngram)
 fi
 
 for mode in "${modes[@]}"; do
