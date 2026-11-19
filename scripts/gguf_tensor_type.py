@@ -56,6 +56,9 @@ GGML_TYPES = {
     40: "nvfp4",
     41: "q1_0",
     42: "q2_0",
+    43: "q1_0_g128",
+    44: "fractal_64",
+    45: "vq3_64",
 }
 
 # GGUF value types (gguf.h).
