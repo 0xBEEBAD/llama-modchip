@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# run-dsv4.sh — DeepSeek-V4-Flash-0731-Fractal (284B, 56.56 GiB) on an Apple Silicon Mac with 64 GB.
+# run-dsv4.sh — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B, 57.99 GiB, 100% std ggml) on Apple Silicon Mac (64 GB).
 #
-# Build the engine first with ./build-dsv4-engine.sh (unified llama-modchip v3.1.0:
-# llama.cpp de32b268c + patches/llama-modchip-v3.1.patch). Stock llama.cpp cannot load
-# FRACTAL_64 (44) / VQ3_64 (45) GGUFs.
+# Build the engine first with ./build-dsv4-engine.sh (unified llama-modchip v3.1.1:
+# llama.cpp de32b268c + patches/llama-modchip-v3.1.patch). Required for ConeCollapse
+# ffn_down_exps.bias and RouteCrack 2.0 support.
 #
-# PROFILE=fast    (default) experts of 5 pure-IQ1_S layers on the CPU. ~51.8 GB on the GPU, so it needs
-#                 `sudo sysctl iogpu.wired_limit_mb=57344` (resets at reboot). Measured on an M5 Max:
-#                 llama-bench tg128 27.0 tok/s, pp512 169; llama-server 20.7-23.6 tok/s, 0 swapouts.
+# PROFILE=fast    (default) experts of 5 middle layers on the CPU (~51.8 GB wired on GPU), needs
+#                 `sudo sysctl iogpu.wired_limit_mb=57344` (resets at reboot).
+#                 Note: the 27.0 tok/s tg128 / 169.4 pp512 M5 Max measurement in results/dsv4-m5max.md
+#                 was recorded on the earlier withdrawn DeepSeek-V4-Flash-0731-Fractal (56.56 GiB) build;
+#                 MaxQ-v4 (57.99 GiB) uses the same hybrid placement profile and awaits fresh M5 Max numbers.
 # PROFILE=nosudo  experts of 8 pure-IQ1_S layers on the CPU. ~49 GB on the GPU, which fits the default
 #                 Metal limit. llama-bench tg128 23.7 tok/s.
 #
@@ -36,7 +38,7 @@ if [[ -z "${MODEL:-}" ]]; then
     elif [[ -f "$HERE/../workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf" ]]; then
         MODEL="$HERE/../workspace/models/dsv4-maxq-v4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
     else
-        MODEL="$HOME/models/dsv4/DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf"
+        MODEL="$HOME/models/dsv4/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf"
     fi
 fi
 PORT="${PORT:-8789}"

@@ -80,7 +80,7 @@ NEMOTRON_ABLIT_SHA256="75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2
 VQ3_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf"
 NEMO_MAXQ_16GB_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf"
 NEMOTRON_ABLIT_MODEL="${WORKSPACE_DIR}/models/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf"
-# Legacy v2.5.x local paths (preserved so existing downloads keep resolving)
+# Legacy v2.5.x local paths (withdrawn from Hugging Face Nov 2026; retained locally only for existing downloads)
 DSV4_MAXQ_MODEL="${WORKSPACE_DIR}/models/dsv4-maxq-fractal/DeepSeek-V4-Flash-0731-MaxQ-Fractal-00001-of-00003.gguf"
 DSV4_VQ3_MODEL="${WORKSPACE_DIR}/models/dsv4-vq3/DeepSeek-V4-Flash-0731-VQ3-00001-of-00003.gguf"
 DSV4_FRACTAL_MODEL="${WORKSPACE_DIR}/models/dsv4-fractal/DeepSeek-V4-Flash-0731-Fractal-00001-of-00003.gguf"

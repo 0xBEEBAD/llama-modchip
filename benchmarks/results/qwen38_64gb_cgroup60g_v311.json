@@ -1,0 +1,823 @@
+{
+  "schema": "llama-modchip-v3.1.1-cgroup60g-variance",
+  "timestamp_utc": "2026-11-20T19:16:46Z",
+  "model_label": "Qwen3.8-Flash-Next-MaxQ-64GB",
+  "model_path": "Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf",
+  "server_args_common": [
+    "-c",
+    "32768",
+    "-np",
+    "1",
+    "-t",
+    "16",
+    "-tb",
+    "16",
+    "-ub",
+    "2048",
+    "-b",
+    "2048",
+    "-fa",
+    "on",
+    "-ctk",
+    "q8_0",
+    "-ctv",
+    "q8_0",
+    "--cpu-range",
+    "16-31",
+    "--cpu-strict",
+    "1",
+    "--cpu-range-batch",
+    "16-31",
+    "--cpu-strict-batch",
+    "1",
+    "--jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--reasoning-budget",
+    "0",
+    "RC_TABLES_DIR=/nonexistent"
+  ],
+  "cgroup_v2_policy": {
+    "MemoryAccounting": "yes",
+    "MemoryMax": "60G (64,424,509,440 B)",
+    "MemorySwapMax": "0"
+  },
+  "host_hardware": {
+    "lscpu": {
+      "Architecture": "x86_64",
+      "CPU(s)": "32",
+      "Model name": "AMD Ryzen 9 9955HX 16-Core Processor",
+      "Thread(s) per core": "2",
+      "Core(s) per socket": "16",
+      "Socket(s)": "1",
+      "L1d cache": "768 KiB (16 instances)",
+      "L2 cache": "16 MiB (16 instances)",
+      "L3 cache": "64 MiB (2 instances)"
+    },
+    "meminfo_kb": {
+      "MemTotal": 77594624,
+      "MemFree": 22759304,
+      "MemAvailable": 77241200,
+      "SwapTotal": 0,
+      "SwapFree": 0
+    },
+    "mem_total_gib": 74.0,
+    "mem_available_gib": 73.66,
+    "swap_total_gib": 0.0,
+    "free_h": "total        used        free      shared  buff/cache   available\nMem:            74Gi       345Mi        21Gi       286Mi        52Gi        73Gi\nSwap:             0B          0B          0B",
+    "nvidia_smi": {
+      "rc": 127,
+      "stdout": "",
+      "stderr": "bash: line 1: nvidia-smi: command not found"
+    },
+    "gpu_count": 0
+  },
+  "configs": {
+    "config3_routecrack2": {
+      "config_name": "config3_routecrack2",
+      "spec_args": [
+        "--spec-type",
+        "routecrack2",
+        "--draft-max",
+        "5"
+      ],
+      "n_reps": 5,
+      "aggregate_tok_per_s_summary": {
+        "n": 5,
+        "values": [
+          14.5378,
+          15.3228,
+          15.5229,
+          16.6,
+          16.631
+        ],
+        "mean": 15.7229,
+        "sd": 0.8942,
+        "ci95_half": 1.1103,
+        "min": 14.5378,
+        "max": 16.631
+      },
+      "process_memory": {
+        "vmhwm_kb": 49167460,
+        "vmhwm_gib": 46.8897,
+        "vmrss_kb": 47610016,
+        "vmrss_gib": 45.4044,
+        "rssanon_kb": 4824816,
+        "rssanon_gib": 4.6013,
+        "rssfile_kb": 42785200,
+        "rssfile_gib": 40.8031,
+        "rssshmem_kb": 0,
+        "rssshmem_gib": 0.0,
+        "vmswap_kb": 0,
+        "vmswap_gib": 0.0
+      },
+      "cgroup_v2": {
+        "cgroup_path": "/system.slice/run-r51fc107284364a1a9aa445f72272365e.scope",
+        "memory_max": 64424509440,
+        "memory_max_gib": 60.0,
+        "memory_peak": 15634604032,
+        "memory_peak_gib": 14.5609,
+        "memory_current": 14827151360,
+        "memory_current_gib": 13.8089,
+        "memory_swap_max": 0,
+        "memory_swap_max_gib": 0.0,
+        "memory_swap_peak": 0,
+        "memory_swap_peak_gib": 0.0,
+        "memory_events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        }
+      },
+      "workloads": {
+        "w1_claude_refactor": {
+          "title": "1. Claude Code Python Refactoring (152-LOC File in Context)",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              19.2981,
+              20.9566,
+              20.8325,
+              21.9773,
+              22.0764
+            ],
+            "mean": 21.0282,
+            "sd": 1.1221,
+            "ci95_half": 1.3932,
+            "min": 19.2981,
+            "max": 22.0764
+          },
+          "total_draft_n": 1083,
+          "total_draft_accepted": 1040,
+          "mean_accept_rate": 0.9603,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 13213.73,
+              "tok_per_s": 19.2981,
+              "prompt_n": 1533,
+              "prompt_ms": 16958.33,
+              "draft_n": 215,
+              "draft_n_accepted": 208,
+              "accept_rate": 0.96744
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 12168.0,
+              "tok_per_s": 20.9566,
+              "prompt_n": 1533,
+              "prompt_ms": 16162.45,
+              "draft_n": 217,
+              "draft_n_accepted": 208,
+              "accept_rate": 0.95853
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 12240.49,
+              "tok_per_s": 20.8325,
+              "prompt_n": 1533,
+              "prompt_ms": 16009.23,
+              "draft_n": 217,
+              "draft_n_accepted": 208,
+              "accept_rate": 0.95853
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 11602.9,
+              "tok_per_s": 21.9773,
+              "prompt_n": 1533,
+              "prompt_ms": 15690.5,
+              "draft_n": 217,
+              "draft_n_accepted": 208,
+              "accept_rate": 0.95853
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 11550.82,
+              "tok_per_s": 22.0764,
+              "prompt_n": 1533,
+              "prompt_ms": 15559.95,
+              "draft_n": 217,
+              "draft_n_accepted": 208,
+              "accept_rate": 0.95853
+            }
+          ]
+        },
+        "w2_claude_multitool_json": {
+          "title": "2. Claude Code Multi-Tool JSON / Patch Generation",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              16.1627,
+              17.5089,
+              19.2514,
+              19.2736,
+              19.4782
+            ],
+            "mean": 18.335,
+            "sd": 1.4516,
+            "ci95_half": 1.8024,
+            "min": 16.1627,
+            "max": 19.4782
+          },
+          "total_draft_n": 1155,
+          "total_draft_accepted": 983,
+          "mean_accept_rate": 0.85108,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 15777.04,
+              "tok_per_s": 16.1627,
+              "prompt_n": 645,
+              "prompt_ms": 7364.88,
+              "draft_n": 238,
+              "draft_n_accepted": 195,
+              "accept_rate": 0.81933
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 14564.0,
+              "tok_per_s": 17.5089,
+              "prompt_n": 645,
+              "prompt_ms": 7330.94,
+              "draft_n": 235,
+              "draft_n_accepted": 195,
+              "accept_rate": 0.82979
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 13245.8,
+              "tok_per_s": 19.2514,
+              "prompt_n": 645,
+              "prompt_ms": 7145.96,
+              "draft_n": 226,
+              "draft_n_accepted": 197,
+              "accept_rate": 0.87168
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 13230.53,
+              "tok_per_s": 19.2736,
+              "prompt_n": 645,
+              "prompt_ms": 6973.02,
+              "draft_n": 229,
+              "draft_n_accepted": 198,
+              "accept_rate": 0.86463
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 13091.58,
+              "tok_per_s": 19.4782,
+              "prompt_n": 645,
+              "prompt_ms": 7014.54,
+              "draft_n": 227,
+              "draft_n_accepted": 198,
+              "accept_rate": 0.87225
+            }
+          ]
+        },
+        "w3_greenfield_c99": {
+          "title": "3. Greenfield C99 Systems Implementation (Lock-Free SPSC Ring Buffer)",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              12.1742,
+              13.1459,
+              12.432,
+              13.0341,
+              13.2593
+            ],
+            "mean": 12.8091,
+            "sd": 0.4775,
+            "ci95_half": 0.5929,
+            "min": 12.1742,
+            "max": 13.2593
+          },
+          "total_draft_n": 1039,
+          "total_draft_accepted": 758,
+          "mean_accept_rate": 0.72955,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 20945.91,
+              "tok_per_s": 12.1742,
+              "prompt_n": 252,
+              "prompt_ms": 3747.51,
+              "draft_n": 214,
+              "draft_n_accepted": 149,
+              "accept_rate": 0.69626
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 19397.69,
+              "tok_per_s": 13.1459,
+              "prompt_n": 252,
+              "prompt_ms": 3303.28,
+              "draft_n": 207,
+              "draft_n_accepted": 160,
+              "accept_rate": 0.77295
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 20511.65,
+              "tok_per_s": 12.432,
+              "prompt_n": 252,
+              "prompt_ms": 3505.98,
+              "draft_n": 204,
+              "draft_n_accepted": 146,
+              "accept_rate": 0.71569
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 19564.04,
+              "tok_per_s": 13.0341,
+              "prompt_n": 252,
+              "prompt_ms": 3573.14,
+              "draft_n": 201,
+              "draft_n_accepted": 149,
+              "accept_rate": 0.74129
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 19231.82,
+              "tok_per_s": 13.2593,
+              "prompt_n": 252,
+              "prompt_ms": 3318.97,
+              "draft_n": 213,
+              "draft_n_accepted": 154,
+              "accept_rate": 0.723
+            }
+          ]
+        },
+        "w4_tech_prose_it_en": {
+          "title": "4. Technical Italian / English Architecture Prose",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              12.4389,
+              12.3195,
+              12.7697,
+              14.7491,
+              14.4087
+            ],
+            "mean": 13.3372,
+            "sd": 1.1518,
+            "ci95_half": 1.4301,
+            "min": 12.3195,
+            "max": 14.7491
+          },
+          "total_draft_n": 1025,
+          "total_draft_accepted": 762,
+          "mean_accept_rate": 0.74341,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 20500.28,
+              "tok_per_s": 12.4389,
+              "prompt_n": 197,
+              "prompt_ms": 3168.73,
+              "draft_n": 211,
+              "draft_n_accepted": 150,
+              "accept_rate": 0.7109
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 20698.88,
+              "tok_per_s": 12.3195,
+              "prompt_n": 197,
+              "prompt_ms": 3117.89,
+              "draft_n": 216,
+              "draft_n_accepted": 145,
+              "accept_rate": 0.6713
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 19969.19,
+              "tok_per_s": 12.7697,
+              "prompt_n": 197,
+              "prompt_ms": 2996.7,
+              "draft_n": 205,
+              "draft_n_accepted": 147,
+              "accept_rate": 0.71707
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 17289.22,
+              "tok_per_s": 14.7491,
+              "prompt_n": 197,
+              "prompt_ms": 2898.06,
+              "draft_n": 194,
+              "draft_n_accepted": 161,
+              "accept_rate": 0.8299
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 17697.61,
+              "tok_per_s": 14.4087,
+              "prompt_n": 197,
+              "prompt_ms": 2832.85,
+              "draft_n": 199,
+              "draft_n_accepted": 159,
+              "accept_rate": 0.79899
+            }
+          ]
+        }
+      }
+    },
+    "config1_pure_n1": {
+      "config_name": "config1_pure_n1",
+      "spec_args": [
+        "--spec-type",
+        "none"
+      ],
+      "n_reps": 5,
+      "aggregate_tok_per_s_summary": {
+        "n": 5,
+        "values": [
+          8.5975,
+          8.5504,
+          8.7059,
+          8.6644,
+          8.7082
+        ],
+        "mean": 8.6453,
+        "sd": 0.0694,
+        "ci95_half": 0.0862,
+        "min": 8.5504,
+        "max": 8.7082
+      },
+      "process_memory": {
+        "vmhwm_kb": 46688156,
+        "vmhwm_gib": 44.5253,
+        "vmrss_kb": 44536308,
+        "vmrss_gib": 42.4731,
+        "rssanon_kb": 2987360,
+        "rssanon_gib": 2.849,
+        "rssfile_kb": 41548948,
+        "rssfile_gib": 39.6242,
+        "rssshmem_kb": 0,
+        "rssshmem_gib": 0.0,
+        "vmswap_kb": 0,
+        "vmswap_gib": 0.0
+      },
+      "cgroup_v2": {
+        "cgroup_path": "/system.slice/run-ra3164c7db93149479d1ae371fca465e8.scope",
+        "memory_max": 64424509440,
+        "memory_max_gib": 60.0,
+        "memory_peak": 10084495360,
+        "memory_peak_gib": 9.3919,
+        "memory_current": 9873702912,
+        "memory_current_gib": 9.1956,
+        "memory_swap_max": 0,
+        "memory_swap_max_gib": 0.0,
+        "memory_swap_peak": 0,
+        "memory_swap_peak_gib": 0.0,
+        "memory_events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        }
+      },
+      "workloads": {
+        "w1_claude_refactor": {
+          "title": "1. Claude Code Python Refactoring (152-LOC File in Context)",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              8.5103,
+              8.2373,
+              8.5305,
+              8.4446,
+              8.5181
+            ],
+            "mean": 8.4482,
+            "sd": 0.1225,
+            "ci95_half": 0.1521,
+            "min": 8.2373,
+            "max": 8.5305
+          },
+          "total_draft_n": 0,
+          "total_draft_accepted": 0,
+          "mean_accept_rate": 0.0,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 29963.86,
+              "tok_per_s": 8.5103,
+              "prompt_n": 1533,
+              "prompt_ms": 14511.91,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 30956.78,
+              "tok_per_s": 8.2373,
+              "prompt_n": 1533,
+              "prompt_ms": 14914.66,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 29892.62,
+              "tok_per_s": 8.5305,
+              "prompt_n": 1533,
+              "prompt_ms": 14903.2,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 30196.81,
+              "tok_per_s": 8.4446,
+              "prompt_n": 1533,
+              "prompt_ms": 15158.2,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 29936.15,
+              "tok_per_s": 8.5181,
+              "prompt_n": 1533,
+              "prompt_ms": 14638.26,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            }
+          ]
+        },
+        "w2_claude_multitool_json": {
+          "title": "2. Claude Code Multi-Tool JSON / Patch Generation",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              8.5438,
+              8.5183,
+              8.6706,
+              8.6384,
+              8.6683
+            ],
+            "mean": 8.6079,
+            "sd": 0.0718,
+            "ci95_half": 0.0892,
+            "min": 8.5183,
+            "max": 8.6706
+          },
+          "total_draft_n": 0,
+          "total_draft_accepted": 0,
+          "mean_accept_rate": 0.0,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 29846.22,
+              "tok_per_s": 8.5438,
+              "prompt_n": 645,
+              "prompt_ms": 6955.9,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 29935.55,
+              "tok_per_s": 8.5183,
+              "prompt_n": 645,
+              "prompt_ms": 6793.78,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 29409.81,
+              "tok_per_s": 8.6706,
+              "prompt_n": 645,
+              "prompt_ms": 6659.39,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 29519.34,
+              "tok_per_s": 8.6384,
+              "prompt_n": 645,
+              "prompt_ms": 6691.02,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 29417.61,
+              "tok_per_s": 8.6683,
+              "prompt_n": 645,
+              "prompt_ms": 6557.55,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            }
+          ]
+        },
+        "w3_greenfield_c99": {
+          "title": "3. Greenfield C99 Systems Implementation (Lock-Free SPSC Ring Buffer)",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              8.586,
+              8.6405,
+              8.7829,
+              8.6961,
+              8.7189
+            ],
+            "mean": 8.6849,
+            "sd": 0.0752,
+            "ci95_half": 0.0934,
+            "min": 8.586,
+            "max": 8.7829
+          },
+          "total_draft_n": 0,
+          "total_draft_accepted": 0,
+          "mean_accept_rate": 0.0,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 29699.44,
+              "tok_per_s": 8.586,
+              "prompt_n": 252,
+              "prompt_ms": 3179.54,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 29512.22,
+              "tok_per_s": 8.6405,
+              "prompt_n": 252,
+              "prompt_ms": 3256.08,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 29033.78,
+              "tok_per_s": 8.7829,
+              "prompt_n": 252,
+              "prompt_ms": 3013.62,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 29323.48,
+              "tok_per_s": 8.6961,
+              "prompt_n": 252,
+              "prompt_ms": 3065.48,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 29246.77,
+              "tok_per_s": 8.7189,
+              "prompt_n": 252,
+              "prompt_ms": 3231.98,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            }
+          ]
+        },
+        "w4_tech_prose_it_en": {
+          "title": "4. Technical Italian / English Architecture Prose",
+          "tok_per_s_summary": {
+            "n": 5,
+            "values": [
+              8.6163,
+              8.6867,
+              8.7075,
+              8.7493,
+              8.7963
+            ],
+            "mean": 8.7112,
+            "sd": 0.0677,
+            "ci95_half": 0.084,
+            "min": 8.6163,
+            "max": 8.7963
+          },
+          "total_draft_n": 0,
+          "total_draft_accepted": 0,
+          "mean_accept_rate": 0.0,
+          "reps": [
+            {
+              "rep": 1,
+              "predicted_n": 256,
+              "predicted_ms": 29595.0,
+              "tok_per_s": 8.6163,
+              "prompt_n": 197,
+              "prompt_ms": 2728.65,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 2,
+              "predicted_n": 256,
+              "predicted_ms": 29355.32,
+              "tok_per_s": 8.6867,
+              "prompt_n": 197,
+              "prompt_ms": 2795.49,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 3,
+              "predicted_n": 256,
+              "predicted_ms": 29285.08,
+              "tok_per_s": 8.7075,
+              "prompt_n": 197,
+              "prompt_ms": 2568.96,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 4,
+              "predicted_n": 256,
+              "predicted_ms": 29145.25,
+              "tok_per_s": 8.7493,
+              "prompt_n": 197,
+              "prompt_ms": 2590.8,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            },
+            {
+              "rep": 5,
+              "predicted_n": 256,
+              "predicted_ms": 28989.5,
+              "tok_per_s": 8.7963,
+              "prompt_n": 197,
+              "prompt_ms": 2577.78,
+              "draft_n": 0,
+              "draft_n_accepted": 0,
+              "accept_rate": 0.0
+            }
+          ]
+        }
+      }
+    }
+  }
+}

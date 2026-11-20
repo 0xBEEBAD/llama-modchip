@@ -1,6 +1,8 @@
-# DeepSeek-V4-Flash-0731-Fractal 284B on an M5 Max (64 GB)
+# DeepSeek-V4-Flash-0731-Fractal (Historical Withdrawn Build) on an M5 Max (64 GB)
 
-**27.0 tok/s decode in `llama-bench`, 20.7–23.6 tok/s in `llama-server`, 0 swapouts.**
+> **Historical Note (Nov 2026):** These M5 Max measurements were recorded on the legacy `DeepSeek-V4-Flash-0731-Fractal` (56.56 GiB, withdrawn Nov 2026 in favor of donor-free `DeepSeek-V4-Flash-0731-MaxQ-v4`, 57.99 GiB). They are preserved for historical reference only and must not be attributed to `MaxQ-v4` until re-measured on M5 Max.
+
+**27.0 tok/s decode in `llama-bench`, 20.7–23.6 tok/s in `llama-server`, 0 swapouts (measured on legacy `Fractal` 56.56 GiB).**
 
 Machine: Apple M5 Max (6 Super + 12 Performance cores), 64 GB unified memory, macOS 27.2,
 `iogpu.wired_limit_mb=57344`. Model: `DeepSeek-V4-Flash-0731-Fractal-0000{1,2,3}-of-00003.gguf`

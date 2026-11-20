@@ -222,9 +222,11 @@ The gateway has these configurable behaviours. Know them before you use it:
 
 ## DeepSeek-V4-Flash 284B on Apple Silicon (M5 Max 64 GB)
 
-Contributed by Bobby Grayson ([`@notactuallytreyanastasio`](https://github.com/notactuallytreyanastasio)), this repository includes full support, build automation, Metal/NEON kernels, and memory mapping optimizations for running the **`DeepSeek-V4-Flash-0731-Fractal` (284B, 56.56 GiB)** model on Apple Silicon Macs.
+Contributed by Bobby Grayson ([`@notactuallytreyanastasio`](https://github.com/notactuallytreyanastasio)), this repository includes full support, build automation, Metal/NEON kernels, and memory mapping optimizations for running `DeepSeek-V4-Flash 284B` on Apple Silicon Macs.
 
-### Key Performance Highlights (Apple M5 Max 64 GB)
+> **Historical Checkpoint Attribution Note (Nov 2026):** The `27.0 tok/s` (`tg128`) and `20.7–23.6 tok/s` (`llama-server`) M5 Max numbers below were measured on the earlier **`DeepSeek-V4-Flash-0731-Fractal` (`56.56 GiB`, withdrawn from Hugging Face in Nov 2026)** build, **not** on the current `57.99 GiB` `DeepSeek-V4-Flash-0731-MaxQ-v4` release. `./apple-silicon/run-dsv4.sh` now defaults to `MaxQ-v4`, which awaits fresh M5 Max benchmarking.
+
+### Key Performance Highlights (Apple M5 Max 64 GB — Historical Withdrawn `Fractal` `56.56 GiB` Build)
 - **`llama-bench` (`tg128`)**: **`27.0 ± 0.4 tok/s`** (`pp512`: **`169.4 ± 29.6 tok/s`**)
 - **`llama-server` (Realistic Workloads)**: **`20.7 – 23.6 tok/s`** served with **`0` swapouts** (`code_edit`: 20.7 t/s, `code_new`: 23.3 t/s, `free_text`: 23.6 t/s).
 - Detailed report and profiling data: [`apple-silicon/results/dsv4-m5max.md`](results/dsv4-m5max.md).

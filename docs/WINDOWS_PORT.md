@@ -25,7 +25,7 @@ Five source and toolchain fixes are integrated into [`patches/llama-modchip-v3.1
 | 4 | `src/llama-graph.cpp` | `ggml_dsv4_skip_csa_comp` is defined in a C file but referenced from C++ | C linkage declared under `_MSC_VER`; MinGW behaviour unchanged |
 | 5 | `patches/llama-modchip-v3.1.patch` & `windows/build_patched_engine.ps1` | On Windows x64, `XMM6..XMM15` are callee-saved (`128-bit`), PE/COFF `.rdata` only guarantees 16-byte section alignment (`vmovdqa64` faults on 64-byte tables), and default `1–2 MB` Windows thread stacks overflow during deep graph builds ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)) | Replaced aligned 512-bit constant loads with unaligned `_mm512_loadu_si512` (`vmovdqu64`), isolated heavy AVX-512 kernels to avoid GCC UCRT64 `XMM6..XMM15` prologue/epilogue clobbers, and set `-Wl,--stack,16777216` (`16 MB` stack) |
 
-One runtime constraint: for `deepseek4`/MLA (and recommended for `qwen4exp`/QSA) the KV cache uses **matching K and V types** (`-ctk q8_0 -ctv q8_0`).
+One runtime constraint: for `deepseek4`/MLA (and recommended for `qwen4exp`/GQA) the KV cache uses **matching K and V types** (`-ctk q8_0 -ctv q8_0`).
 
 ## 3. Build
 
