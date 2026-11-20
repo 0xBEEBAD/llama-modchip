@@ -18,7 +18,7 @@
     "prefix_matched_top5_agreement_pct": 97.99,
     "reference_model": {
       "label": "NVIDIA-Nemotron-3.5-30B-A3B-BF16",
-      "server_model_id": "/usr/share/ollama/.ollama/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16.gguf",
+      "server_model_id": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16.gguf",
       "model_file": "",
       "model_sha256": "fd513c912c63dc5ca29ab6932107f8354d53ea13be88b3c5072bd4022814acc7",
       "num_probes": 32,

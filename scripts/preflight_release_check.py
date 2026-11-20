@@ -60,6 +60,8 @@ OPSEC_FORBIDDEN_PATTERNS: list[tuple[str, str]] = [
     (r"\bghp_[A-Za-z0-9]{20,}\b", "GitHub personal access token"),
     (r"\bgithub_pat_[A-Za-z0-9_]{20,}\b", "GitHub fine-grained token"),
     (r"\bsk-[A-Za-z0-9]{20,}\b", "API secret key"),
+    (r"(?i)\bproxmox\b", "Hypervisor vendor name (Proxmox)"),
+    (r"/usr/share/ollama\b", "Host-specific Ollama storage path"),
 ]
 
 
