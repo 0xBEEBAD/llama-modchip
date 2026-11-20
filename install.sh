@@ -298,7 +298,7 @@ fi
 #   >= 60 GB RAM (64 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB, RouteCrack 2.0, 15.34–21.38 t/s)
 #   30..59 GB RAM (32 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + lazy NVMe PLE, RouteCrack 2.0)
 #   21..29 GB RAM (16–24 GB)   -> Nemotron-3.5-30B-A3B-VQ3-64 (AVX-512 VBMI CPU-Turbo) or MaxQ-16GB
-#   <= 20 GB RAM (16 GB strict)-> Nemotron-3.5-30B-A3B-MaxQ-16GB (14.304 GiB <= 15.0 GiB cgroup; zero OOM risk)
+#   <= 20 GB RAM (16 GB strict)-> Nemotron-3.5-30B-A3B-MaxQ-16GB (13.39 GiB disk; smallest 16 GB footprint, ~15.0G N=1)
 if [[ "$TOTAL_RAM_GB" -ge 60 ]]; then
     DEFAULT_PRESET="qwen38-64gb"
     DEFAULT_MENU_CHOICE="1"
@@ -337,7 +337,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.1 CPU-Turbo]"
         echo "     Default 16GB CPU-Turbo (AVX-512 VBMI VQ3_64=45 + RouteCrack 2.0 · 28.2–60.4 t/s)"
         echo "  7) NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB        [30B MoE · 13.39 GiB · 100% std ggml]"
-        echo "     Universal 16GB (100% standard ggml — CPU, Apple Metal, CUDA & LM Studio)"
+        echo "     Universal 16GB (standard ggml <=42 — upstream llama.cpp & Q2_0-capable runners)"
         echo "  8) NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3  [30B MoE · 13.30 GiB · Opt-In]"
         echo "     [OPT-IN UNCENSORED] 16GB VQ3-64 + RouteCrack 2.0 (refusal removed)"
         echo "------------------------------------------------------------------------------"

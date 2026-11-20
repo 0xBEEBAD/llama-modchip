@@ -50,11 +50,14 @@ Evaluated on `40 × 512` blind `wiki-alt.txt` chunks (`0.000000%` 8-gram and 13-
 
 ## 3. `RouteCrack 2.0` (`v3.1.1`) Throughput, Cold-Cache Cgroup v2 Suite, & Target Parity
 
-Verified across all three flagship families (`T = 0`, 16 Zen 5 cores, `0 GPU`, `74.0 GiB` container): uncapped single-run `W1–W4` head-to-head logs in `benchmarks/results/*_routecrack2_v31.json`, plus **all four cold-cache Linux Cgroup v2 (`drop_caches=3`, `Cached=0.3 GiB`, `MemorySwapMax=0`, `oom_kill=0`, `n = 3` independent cold restarts each) variance JSONs**:
-- [`results/qwen38_64gb_cgroup60g_v311.json`](results/qwen38_64gb_cgroup60g_v311.json) (`60.0 GiB` cap): `N=1` **`8.78 ± 0.02`** (`46.53 GiB` cg.peak) vs `RC2` **`15.64 ± 0.05 tok/s`** (`W1 22.00 ± 0.19`, `48.35 GiB` cg.peak, `pgsteal=0`)
-- [`results/dsv4_64gb_cgroup60g_v311.json`](results/dsv4_64gb_cgroup60g_v311.json) (`60.0 GiB` cap): `N=1` **`7.68 ± 0.01`** vs `RC2` **`8.88 ± 0.25 tok/s`** (`W1 16.14`, `59.73 GiB` VmHWM / `60.00 GiB` cg.peak, clean file-page reclaim `pgsteal > 0` with `Swap=0`; note ZFS hypervisor ARC refault caveat)
-- [`results/qwen38_32gb_cgroup28g_v311.json`](results/qwen38_32gb_cgroup28g_v311.json) (`28.5 GiB` cap): `N=1` **`10.00 ± 0.01`** (`26.79 GiB` cg.peak) vs `RC2` **`14.58 ± 0.32 tok/s`** (`W1 15.31`, `28.26 GiB` cg.peak, `pgsteal=0`, `>10.5 GiB` PLE unfaulted)
-- [`results/nemotron_16gb_cgroup15g_v311.json`](results/nemotron_16gb_cgroup15g_v311.json) (`15.0 GiB` cap): `N=1` **`22.64 ± 0.03`** vs `RC2` **`26.28 ± 0.19 tok/s`** (`W1 43.53`, `14.92 GiB` VmHWM / `15.00 GiB` cg.peak, clean file-page reclaim `pgsteal > 0` with `Swap=0`; note ZFS hypervisor ARC refault caveat)
+Verified across all three flagship families (`T = 0`, 16 Zen 5 cores, `0 GPU`, `74.0 GiB` container): uncapped single-run `W1–W4` head-to-head logs in `benchmarks/results/*_routecrack2_v31.json`, plus **all four cold-cache Linux Cgroup v2 (`drop_caches=3`, `Cached=0.3 GiB`, `MemorySwapMax=0`, `oom_kill=0`, `n = 3` independent cold restarts each) JSONs**:
+- **Certified strictly below cap (`pgsteal = 0`, `workingset_refault = 0`):**
+  - [`results/qwen38_64gb_cgroup60g_v311.json`](results/qwen38_64gb_cgroup60g_v311.json) (`60.0 GiB` cap): `N=1` **`8.78 ± 0.02`** (`46.53 GiB` cg.peak) vs `RC2` **`15.64 ± 0.05 tok/s`** (`W1 22.00 ± 0.19`, `48.35 GiB` cg.peak)
+  - [`results/qwen38_32gb_cgroup28g_v311.json`](results/qwen38_32gb_cgroup28g_v311.json) (`28.5 GiB` cap): `N=1` **`10.00 ± 0.01`** (`26.79 GiB` cg.peak) vs `RC2` **`14.58 ± 0.32 tok/s`** (`W1 15.31`, `28.26 GiB` cg.peak — tight `0.24 GiB` headroom at 32K, `>10.5 GiB` PLE unfaulted)
+  - [`results/nemotron_16gb_cgroup15g_v311.json`](results/nemotron_16gb_cgroup15g_v311.json) (`15.0 GiB` cap, `N=1`): **`22.64 ± 0.03 tok/s`** (`~15.03 GiB` needed, `0.2 GiB` refault — nearly fits `15.0 GiB`; higher than earlier unpinned `-t 15 --poll 0` `15.10 t/s` `llama-bench` gate due to pinned `16C` `taskset` + `q8_0/q4_0` KV)
+- **Exceeds cap at `-c 32768` (OOM-free via continuous host-ZFS-ARC-backed file reclaim; bare-metal throughput unverified):**
+  - [`results/dsv4_64gb_cgroup60g_v311.json`](results/dsv4_64gb_cgroup60g_v311.json) (`60.0 GiB` cap): requires `~60.3–60.7 GiB` (`>= 61 GiB` free RAM for zero refaults); completes OOM-free via `10.7–30.7 GiB`/run ZFS-ARC-backed file reclaim (`8.88 ± 0.25` RC2 / `7.68 ± 0.01` N=1)
+  - [`results/nemotron_16gb_cgroup15g_v311.json`](results/nemotron_16gb_cgroup15g_v311.json) (`15.0 GiB` cap, `RC2`): requires `~15.75 GiB` (`>= 16 GiB` free RAM for zero refaults); completes OOM-free via `8.4–9.2 GiB`/run ZFS-ARC-backed file reclaim (`26.28 ± 0.19`)
 
 | Flagship Checkpoint | Pure `N=1` (`none`) | `v3.0` Default | **`RouteCrack 2.0` (`v3.1.1`)** | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Accept (`Mean Len`) | Exact Token Match vs. `N=1` (`T=0`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
@@ -77,7 +80,7 @@ Built 100% donor-free from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe2
 | `antirez` `IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-0731` | `80.76 GiB` | No (`96 GB+`) | `5.5484 ± 0.0762` | `5.6025 ± 0.0377` |
 | `unsloth` `UD-IQ1_S` | `76.87 GiB` | No (`96 GB+`) | — | `5.9734` |
 | `AtomicChat` `AD-IQ1_M` | `65.42 GiB` | No (`>64 GiB` OOM) | — | `6.3813` |
-| **`Synchopate` `MaxQ-v4-0731` *(100% Donor-Free Default)*** | **`57.99 GiB`** | **Yes — `60.0 GiB` cold cg PASS** (`59.73` VmHWM, `Swap=0`, [`JSON`](results/dsv4_64gb_cgroup60g_v311.json)) | **`6.8026 ± 0.0977`** | **`6.8592 ± 0.0482`** (`Mean KLD = 0.6485`, `Median = 0.1838`, `Top-1 = 73.283%`; [`log`](results/atomicchat_wikialt_ctx5632_51c_dsv4_maxq_v4.log)) |
+| **`Synchopate` `MaxQ-v4-0731` *(100% Donor-Free Default)*** | **`57.99 GiB`** | `~60.5 GiB` WS (needs `>= 61G` free; `60G` cg OOM-free via ARC reclaim, [`JSON`](results/dsv4_64gb_cgroup60g_v311.json)) | **`6.8026 ± 0.0977`** | **`6.8592 ± 0.0482`** (`Mean KLD = 0.6485`, `Median = 0.1838`, `Top-1 = 73.283%`; [`log`](results/atomicchat_wikialt_ctx5632_51c_dsv4_maxq_v4.log)) |
 | `Synchopate` `MaxQ-Fractal-0731` *(Historical `v2.5.3`)* | `56.93 GiB` | `74 GiB` host (`58.13 GiB` `VmRSS`; legacy) | `7.3180 ± 0.1039` | `7.2977 ± 0.0504` (`Mean KLD = 0.7400`, `Top-1 = 70.397%`; [`log`](results/atomicchat_wikialt_ctx5632_51c_dsv4_maxq_fractal.log)) |
 | `DevQuasar` `Q2_K` *(uncalibrated outlier)* | `95.99 GiB` | No (`128 GB+`) | `9.4237 ± 0.1402` | `9.1127 ± 0.0647` |
 

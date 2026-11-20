@@ -18,7 +18,7 @@
 | Optimization Layer | Technique Implemented | Target Bottleneck Solved | Measured Gain (`Zen 5` / `Threadripper` / `Vulkan` / `Metal`) |
 | :--- | :--- | :--- | :--- |
 | **1. Quantization (`LUT-VQ3-64`)** | Block-64 3D Lloyd-Max Vector Quantizer (`GGML_TYPE_VQ3_64 = 45`, `24B / 64w = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B` (`patches/llama-modchip-v3.1.patch`) | Reduces MoE `up_exps` footprint by `-33.3%` vs `Q4_0` and `-20.0%` vs `Fractal-64` without scalar 2–3 bit grid loss (`+3.42 dB` SQNR over `Q2_K`) | **`13.30 GiB` shipped Hybrid (`13.08 GiB` full `up_exps` / `16.04 GiB` RSS)**, **`24.18 tok/s` E2E (`+23.7%` vs `Q4_0`)**, **`70.19%` PVS acc**, **`100/100` Gate** |
-| **2. Quantization (`MaxQ-16GB`)** | 100% Donor-Free Standard `ggml` (`max_type = 42`, `0` custom types: `{F32, Q4_0, Q8_0, MXFP4, Q2_0}`) | Universal 16 GB deployment on unmodified upstream `llama.cpp`, Apple Metal, CUDA, Vulkan, and LM Studio | **`13.39 GiB` (`VmHWM = 14.304 GiB <= 15.0 GiB` cgroup)**, **`188.3 tok/s` `pp512`**, **`27.80 tok/s`** refactor (`94.4%` acc), blind `wiki-alt` PPL **`7.31`** |
+| **2. Quantization (`MaxQ-16GB`)** | 100% Donor-Free Standard `ggml` (`max_type = 42`, `0` custom types: `{F32, Q4_0, Q8_0, MXFP4, Q2_0}`) | Universal 16 GB deployment on unmodified upstream `llama.cpp` (`de32b268c+`) and `Q2_0`-capable runners (Apple Metal, CUDA, Vulkan) | **`13.39 GiB` (`~15.0G` cold `N=1` / `14.304 GiB` warm gate)**, **`22.64 tok/s`** cold cg `N=1` (`188.3` `pp512`), blind `wiki-alt` PPL **`7.31`** |
 | **3. Quantization (`Fractal-64`)** | Block-64 2-Level Hierarchical Non-Linear `GGML_TYPE_FRACTAL_64 = 44` (`30B / 64w = 3.75 bpw`) from `BF16` master weights | `1856 × 2688` expert dimensions are not divisible by `256`, causing `Q3_K`/`IQ3_S` in `llama.cpp` to fall back to `Q4_0` | **`17.60 GiB -> 14.36 GiB` (`-6.01 GiB` idle RAM)**, **`+28.0%` CPU decode (`25.02 tok/s`)**, **`78.60 tok/s` M3 Max Metal ([PR #24](https://github.com/synchopate/llama-modchip/pull/24))**, **`100/100` Gate** |
 | **4. Quantization (`Fractal-MXFP4`)** | Asymmetric Block-32 `MXFP4` (`4.25 bpw`) on routed MoE experts + `Q8_0`/`Q4_0` on GQA/SSM backbone + `_MM_HINT_NTA` | Bandwidth bottleneck on CPU & VRAM capacity on `16 GB` GPUs | **`15.95 GiB`**, **`28.20 agg / 42.18 W1 tok/s` `RouteCrack 2.0` CPU**, **`75.1–80.8 tok/s` on AMD Vulkan Hybrid** |
 | **5. SIMD Kernels (`FRACTAL_64` & `VQ3_64`)** | Single-cycle AVX-512 VBMI `VPERMI2B` (`VQ3_64 = 45`) and AVX-512 `vprorvq` / AVX2 variable bit-shifts fused into `vpmaddwd` (`FRACTAL_64 = 44`) | Scalar bit-unpacking overhead in sub-4-bit hierarchical blocks | **`+55%` `FRACTAL_64` kernel speedup** (`86.5 ms -> 55.8 ms` per 10M blocks), register-resident 384-byte `VQ3_64` codebook |
@@ -90,7 +90,7 @@ To measure quantization and abliteration fidelity directly against the uncompres
 ```bash
 # 1. Install & SHA-256 verify pre-quantized Nemotron v3.1.1 checkpoints from Hugging Face
 ./install.sh --preset nemotron-vq3         # 13.30 GiB CPU-Turbo (types 44/45, AVX-512 VBMI + RouteCrack 2.0)
-./install.sh --preset nemotron-maxq-16gb   # 13.39 GiB 100% standard ggml (CPU / Apple Metal / CUDA / LM Studio)
+./install.sh --preset nemotron-maxq-16gb   # 13.39 GiB standard ggml <=42 (upstream llama.cpp & Q2_0-capable runners)
 ./install.sh --preset nemotron-fractal     # 14.36 GiB Fractal-64 (type 44, AVX2 / Apple Metal)
 
 # 2. Launch interactive streaming chat or run the 100-Point Quality & Tool-Calling Gate
