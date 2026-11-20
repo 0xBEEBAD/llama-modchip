@@ -686,26 +686,50 @@ def _extract_hex64(val: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+class _CaptureRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Captures pre-redirect headers (e.g. Hugging Face X-Linked-ETag LFS SHA-256) before following to CDN."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.redirect_headers: list[dict[str, str]] = []
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        self.redirect_headers.append({k.lower(): v for k, v in headers.items()})
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def check_remote_mirrors(manifest: dict[str, Any], g: GateResult) -> None:
     gh_base = manifest["mirrors"]["github_release_base"].rstrip("/")
     hf_base = manifest["mirrors"]["hf_binary_fallback_base"].rstrip("/")
     headers = {"User-Agent": "llama-modchip-preflight/1.1"}
 
-    # 1. Verify all dual-mirror binaries (HTTP 200, matching Content-Length, and HF LFS SHA-256 header when present)
+    # 1. Verify all dual-mirror binaries (HTTP 200, matching Content-Length, and HF LFS X-Linked-ETag SHA-256)
     for artifact, expected_sha in manifest.get("artifacts", {}).items():
         sizes: dict[str, int | None] = {}
         for label, url in (("GitHub", f"{gh_base}/{artifact}"), ("HF", f"{hf_base}/{artifact}")):
+            redir = _CaptureRedirectHandler()
+            opener = urllib.request.build_opener(redir)
             req = urllib.request.Request(url, method="HEAD", headers=headers)
             try:
-                with urllib.request.urlopen(req, timeout=20) as resp:
+                with opener.open(req, timeout=20) as resp:
                     if resp.status != 200:
                         g.fail(f"{label} mirror HTTP {resp.status} for {artifact}: {url}")
                     cl = resp.headers.get("Content-Length")
                     sizes[label] = int(cl) if cl and cl.isdigit() else None
                     if label == "HF":
-                        hf_sha = _extract_hex64(resp.headers.get("X-Linked-Etag")) or _extract_hex64(resp.headers.get("ETag"))
-                        if hf_sha and hf_sha != expected_sha:
-                            g.fail(f"HF LFS SHA-256 mismatch for {artifact}: remote={hf_sha[:12]}... vs manifest={expected_sha[:12]}...")
+                        linked_etag = resp.headers.get("X-Linked-Etag")
+                        for rh in redir.redirect_headers:
+                            if "x-linked-etag" in rh:
+                                linked_etag = rh["x-linked-etag"]
+                                break
+                        hf_sha = _extract_hex64(linked_etag)
+                        if not hf_sha:
+                            g.fail(f"HF mirror missing X-Linked-ETag LFS SHA-256 header for {artifact}")
+                        elif hf_sha != expected_sha:
+                            g.fail(
+                                f"HF LFS SHA-256 mismatch for {artifact}: "
+                                f"remote={hf_sha[:12]}... vs manifest={expected_sha[:12]}..."
+                            )
             except Exception as exc:
                 g.fail(f"{label} mirror unreachable for {artifact}: {url} ({exc})")
         if sizes.get("GitHub") and sizes.get("HF") and sizes["GitHub"] != sizes["HF"]:
