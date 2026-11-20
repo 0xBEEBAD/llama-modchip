@@ -1,4 +1,4 @@
-% llama-modchip v3.1.0 Technical Paper (arXiv-compatible LaTeX2e source)
+% llama-modchip v3.1.1 Technical Paper (arXiv-compatible LaTeX2e source)
 \documentclass[10pt,twocolumn]{article}
 
 \ifdefined\pdfsuppressptexinfo
@@ -28,7 +28,7 @@
     linkcolor=blue!60!black,
     citecolor=blue!60!black,
     urlcolor=blue!70!black,
-    pdftitle={llama-modchip v3.1.0: Three-Tier Donor-Free MaxQ Compression, Zero-Collision Multi-ISA Kernels, and RouteCrack 2.0 L1 Micro-Arbiter Speculative Decoding},
+    pdftitle={llama-modchip v3.1.1: Three-Tier Donor-Free MaxQ Compression, Zero-Collision Multi-ISA Kernels, and RouteCrack 2.0 L1 Micro-Arbiter Speculative Decoding},
     pdfauthor={Paolo}
 }
 
@@ -38,7 +38,7 @@
 \setlength{\columnsep}{0.24in}
 \emergencystretch=1.6em
 
-\title{\textbf{\Large \texttt{llama-modchip v3.1.0}: Three-Tier Donor-Free \texttt{MaxQ} Compression, Zero-Collision Multi-ISA Kernels, and \texttt{RouteCrack 2.0} L1 Micro-Arbiter Speculative Decoding}}
+\title{\textbf{\Large \texttt{llama-modchip v3.1.1}: Three-Tier Donor-Free \texttt{MaxQ} Compression, Zero-Collision Multi-ISA Kernels, and \texttt{RouteCrack 2.0} L1 Micro-Arbiter Speculative Decoding}}
 
 \author{
   \textbf{Paolo} \\
@@ -55,7 +55,7 @@
 \begin{abstract}
 Deploying frontier Sparse Mixture-of-Experts (MoE) language models---spanning 30B to 284B parameters---on commodity 16~GB, 32~GB, and 64~GB CPU workstations and consumer GPU+CPU hybrids remains bottlenecked by memory capacity, per-token DDR5 bandwidth, and mismatched speculative decoding policies. Standard 2-bit quantizers either exceed host RAM budgets on 176B--284B models or rely on lossy expert pruning and donor transcoding, while naive multi-step neural draft loops waste milliseconds executing full-vocabulary \texttt{lm\_head} projections or over-drafting high-entropy prose on bandwidth-bound MoE backends.
 
-We present \textbf{\texttt{llama-modchip v3.1.0}}, an open-source, hardware-aware inference architecture uniting three co-designed layers: (1) a \textbf{Three-Tier 100\% Donor-Free \texttt{MaxQ} Fleet} spanning 64~GB (\texttt{Qwen3.8-Flash-Next MaxQ-64GB}, 53.99~GiB, blind \texttt{wiki-alt.txt} PPL \textbf{3.4325} and \textbf{$-46.6\%$} KLD vs.\ 54.40~GiB \texttt{IQ1\_M} competitor; plus \texttt{DeepSeek-V4-Flash 284B MaxQ-v4}, 57.99~GiB, 100\% standard \texttt{ggml}), 32~GB (\texttt{Qwen3.8-Flash-Next MaxQ-32GB}, 24.98~GiB resident trunk + 10.73~GiB demand-paged \texttt{PCA-Wiener + RaBitQ Q1\_0} Per-Layer Embeddings verified under strict Cgroup v2 \texttt{28.5 GiB} \texttt{Swap=0}), and 16~GB (\texttt{NVIDIA-Nemotron-3.5-30B-A3B VQ3-64} at 13.30~GiB and 100\% standard \texttt{ggml} \texttt{MaxQ-16GB} at 13.39~GiB); (2) a \textbf{Zero-Collision \texttt{ggml} ABI} preserving upstream \texttt{GGML\_TYPE\_Q1\_0 = 41}, \texttt{GGML\_TYPE\_Q2\_0 = 42}, and \texttt{GGML\_TYPE\_F8\_E4M3 = 43} untouched while assigning custom \texttt{GGML\_TYPE\_FRACTAL\_64 = 44} (3.75~bpw) and \texttt{GGML\_TYPE\_VQ3\_64 = 45} (3.00~bpw LUT) across AVX-512 VBMI/VNNI, AVX2+FMA, ARM64 NEON, and native Apple Metal GPU kernels with zero-copy 3D MoE \texttt{{-}{-}repack}; and (3) \textbf{\texttt{RouteCrack 2.0} (\texttt{{-}{-}spec-type routecrack2})}, a unified speculative engine fusing NextN Multi-Token Prediction (MTP) / \texttt{RCPredictor}, O(1) Two-Zone 40K Suffix Indexing with sub-250~ns fast-path bypass, and 192~KB Stockfish-PVS Zobrist memory with 28-bit Tagged Mode Refutation under an \textbf{832~B (13-cache-line) L1-resident \texttt{[10$\to$16$\to$1]} SIMD Micro-Arbiter}. On a 16-core Zen~5 CPU (0~GPU), \texttt{RouteCrack 2.0} reaches \textbf{15.88~tok/s aggregate / 21.98~tok/s peak} on \texttt{Qwen3.8} ($+80.8\%$ vs.\ $N=1$, $+14.5\%$ vs.\ \texttt{draft-mtp}), \textbf{7.79~tok/s aggregate / 12.31~tok/s peak} on 284B \texttt{DeepSeek-V4 MaxQ-v4} ($+14.5\%$ vs.\ $N=1$), and \textbf{28.20~tok/s aggregate / 42.18~tok/s peak} on \texttt{Nemotron-30B} ($+24.8\%$ vs.\ $N=1$).
+We present \textbf{\texttt{llama-modchip v3.1.1}}, an open-source, hardware-aware inference architecture uniting three co-designed layers: (1) a \textbf{Three-Tier 100\% Donor-Free \texttt{MaxQ} Fleet} spanning 64~GB (\texttt{Qwen3.8-Flash-Next MaxQ-64GB}, 53.99~GiB, blind \texttt{wiki-alt.txt} PPL \textbf{3.4325} and \textbf{$-46.6\%$} KLD vs.\ 54.40~GiB \texttt{IQ1\_M} competitor; plus \texttt{DeepSeek-V4-Flash 284B MaxQ-v4}, 57.99~GiB, 100\% standard \texttt{ggml}), 32~GB (\texttt{Qwen3.8-Flash-Next MaxQ-32GB}, 24.98~GiB resident trunk + 10.73~GiB demand-paged \texttt{PCA-Wiener + RaBitQ Q1\_0} Per-Layer Embeddings verified under strict Cgroup v2 \texttt{28.5 GiB} \texttt{Swap=0}), and 16~GB (\texttt{NVIDIA-Nemotron-3.5-30B-A3B VQ3-64} at 13.30~GiB and 100\% standard \texttt{ggml} \texttt{MaxQ-16GB} at 13.39~GiB); (2) a \textbf{Zero-Collision \texttt{ggml} ABI} preserving upstream \texttt{GGML\_TYPE\_Q1\_0 = 41}, \texttt{GGML\_TYPE\_Q2\_0 = 42}, and \texttt{GGML\_TYPE\_F8\_E4M3 = 43} untouched while assigning custom \texttt{GGML\_TYPE\_FRACTAL\_64 = 44} (3.75~bpw) and \texttt{GGML\_TYPE\_VQ3\_64 = 45} (3.00~bpw LUT) across AVX-512 VBMI/VNNI, AVX2+FMA, ARM64 NEON, and native Apple Metal GPU kernels with zero-copy 3D MoE \texttt{{-}{-}repack}; and (3) \textbf{\texttt{RouteCrack 2.0} (\texttt{{-}{-}spec-type routecrack2})}, a unified speculative engine fusing NextN Multi-Token Prediction (MTP) / \texttt{RCPredictor}, O(1) Two-Zone 40K Suffix Indexing with sub-250~ns fast-path bypass, and 192~KB Stockfish-PVS Zobrist memory with 28-bit Tagged Mode Refutation under an \textbf{832~B (13-cache-line) L1-resident \texttt{[10$\to$16$\to$1]} SIMD Micro-Arbiter}. On a 16-core Zen~5 CPU (0~GPU), \texttt{RouteCrack 2.0} reaches \textbf{15.34~tok/s aggregate / 21.38~tok/s peak} on aligned \texttt{Qwen3.8-MaxQ-64GB} ($+77.0\%$ vs.\ $N=1$, $+10.1\%$ vs.\ \texttt{draft-mtp}), \textbf{7.79~tok/s aggregate / 12.31~tok/s peak} on 284B \texttt{DeepSeek-V4 MaxQ-v4} ($+14.5\%$ vs.\ $N=1$), and \textbf{28.20~tok/s aggregate / 42.18~tok/s peak} on \texttt{Nemotron-30B} ($+24.8\%$ vs.\ $N=1$).
 \end{abstract}
 
 \section{Introduction}
@@ -78,17 +78,17 @@ Prior local inference systems---including PowerInfer \cite{powerinfer}, KTransfo
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/fig1_routecrack2_architecture.pdf}
-\caption{End-to-end \texttt{llama-modchip v3.1.0} architecture. (A) Three-tier donor-free \texttt{MaxQ} fleet running over a zero-collision \texttt{ggml} ABI (\texttt{41..45}) and multi-ISA SIMD/Metal kernels with zero-copy 3D MoE \texttt{{-}{-}repack}. (B) Unified \texttt{RouteCrack 2.0} speculative pipeline combining O(1) Two-Zone 40K Suffix bypass, Neural MTP/\texttt{RCPredictor} anchoring, 192~KB Stockfish-PVS Zobrist memory with 28-bit Tagged Mode Refutation, and an 832~B L1-resident SIMD Micro-Arbiter.}
+\caption{End-to-end \texttt{llama-modchip v3.1.1} architecture. (A) Three-tier donor-free \texttt{MaxQ} fleet running over a zero-collision \texttt{ggml} ABI (\texttt{41..45}) and multi-ISA SIMD/Metal kernels with zero-copy 3D MoE \texttt{{-}{-}repack}. (B) Unified \texttt{RouteCrack 2.0} speculative pipeline combining O(1) Two-Zone 40K Suffix bypass, Neural MTP/\texttt{RCPredictor} anchoring, 192~KB Stockfish-PVS Zobrist memory with 28-bit Tagged Mode Refutation, and an 832~B L1-resident SIMD Micro-Arbiter.}
 \label{fig:arch}
 \end{figure*}
 
-Figure~\ref{fig:arch} summarizes our \texttt{v3.1.0} co-design. All modifications ship in a single unified patch (\texttt{patches/llama-modchip-v3.1.patch}) pinned to \texttt{llama.cpp @ de32b268c} (build \texttt{12416}), compiling cleanly across Linux x86-64/ARM64, macOS Apple Metal, Windows 11 (MinGW/MSVC/CUDA), and Vulkan.
+Figure~\ref{fig:arch} summarizes our \texttt{v3.1.1} co-design. All modifications ship in a single unified patch (\texttt{patches/llama-modchip-v3.1.patch}) pinned to \texttt{llama.cpp @ de32b268c} (build \texttt{12416}), compiling cleanly across Linux x86-64/ARM64, macOS Apple Metal, Windows 11 (MinGW/MSVC/CUDA), and Vulkan.
 
 \section{Three-Tier Donor-Free \texttt{MaxQ} Compression \& Zero-Collision ABI}
 \label{sec:quant}
 
 \subsection{Zero-Collision \texttt{ggml} Type ABI (\texttt{41..45})}
-To guarantee simultaneous compatibility with upstream \texttt{llama.cpp} formats and custom block-64 CPU/Metal kernels inside one binary, \texttt{llama-modchip v3.1.0} leaves all upstream enums completely untouched and places custom kernels at dedicated non-colliding IDs (Table~\ref{tab:abi}):
+To guarantee simultaneous compatibility with upstream \texttt{llama.cpp} formats and custom block-64 CPU/Metal kernels inside one binary, \texttt{llama-modchip v3.1.1} leaves all upstream enums completely untouched and places custom kernels at dedicated non-colliding IDs (Table~\ref{tab:abi}):
 \begin{itemize}
     \item \textbf{Upstream Standard Types Preserved}: \texttt{GGML\_TYPE\_Q1\_0 = 41} (RaBitQ 1-bit PLE), \texttt{GGML\_TYPE\_Q2\_0 = 42} (18~B / 64~W $= 2.25$~bpw signed-scale), and \texttt{GGML\_TYPE\_F8\_E4M3 = 43}.
     \item \textbf{\texttt{Fractal-64} (\texttt{GGML\_TYPE\_FRACTAL\_64 = 44}, 30~B / 64~W $= 3.75$~bpw)}: Stores an FP16 super-scale $d$, eight 4-bit shifted sub-scales $\tilde{m}_s = m_s + 4 \in \{4..19\}$, and 64 3-bit indices into the kurtosis-matched dyadic codebook $\{-14,-8,-4,-1,+1,+4,+8,+14\}$. Achieves \textbf{17.75~dB SQNR} (99.15\% cosine similarity on raw \texttt{BF16} MoE weights, $+1.45$~dB over \texttt{Q3\_K}). Sub-scale multiplication fuses into \texttt{vpmaddwd} at zero extra instructions, \texttt{qh} unpacking leverages AVX-512 \texttt{vprorvq}, and native register-tiled Apple Metal shaders sustain \textbf{78.60~tok/s} on M3 Max and \textbf{57.65~tok/s} on M1 Max.
@@ -97,7 +97,7 @@ To guarantee simultaneous compatibility with upstream \texttt{llama.cpp} formats
 
 \begin{table}[h]
 \centering
-\caption{Zero-collision \texttt{ggml} type enum map in \texttt{llama-modchip v3.1.0} (\texttt{ggml/include/ggml.h} @ \texttt{de32b268c}).}
+\caption{Zero-collision \texttt{ggml} type enum map in \texttt{llama-modchip v3.1.1} (\texttt{ggml/include/ggml.h} @ \texttt{de32b268c}).}
 \label{tab:abi}
 \resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}clccc@{}}
@@ -115,10 +115,10 @@ To guarantee simultaneous compatibility with upstream \texttt{llama.cpp} formats
 \end{table}
 
 \subsection{Three-Tier Donor-Free \texttt{MaxQ} Algorithms}
-Every \texttt{v3.1.0} flagship checkpoint is quantized 100\% donor-free directly from upstream \texttt{BF16}/\texttt{MXFP4} weights with zero donor GGUF weight copying:
+Every \texttt{v3.1.1} flagship checkpoint is quantized 100\% donor-free directly from upstream \texttt{BF16}/\texttt{MXFP4} weights with zero donor GGUF weight copying:
 \begin{enumerate}
     \item \textbf{64~GB \& 32~GB \texttt{Qwen3.8-Flash-Next} (\texttt{MaxQ-64GB} \& \texttt{MaxQ-32GB}, 100\% std \texttt{ggml}, $\max\text{type}=42$)}:
-    By projecting the $320\text{M}$-row Per-Layer Embedding table with \textbf{\texttt{PCA-Wiener} ($D=256$) + \texttt{RaBitQ Q1\_0}} \cite{rabitq2024}, Shard~2 shrinks from 26.82~GiB (\texttt{IQ4\_NL}) to \textbf{10.73~GiB}, reinvesting $+16.09$~GiB directly into all 512/512 unpruned routed experts, \textbf{FP64 Woodbury DualGram} signed-scale \texttt{Q2\_0}, and the built-in 0.81~GiB \texttt{blk.48} NextN MTP head. \texttt{MaxQ-64GB} totals 53.99~GiB (45.08~GiB peak \texttt{VmHWM}, \texttt{RssAnon = 1.81~GiB}). \texttt{MaxQ-32GB} further applies \textbf{\texttt{ConeCollapse}} across 42 interior MoE layers ($K=640\to 512$ with exact post-quantization \texttt{F32} \texttt{ffn\_down\_exps.bias} centroid compensation), compressing Shard~1 to 24.98~GiB while demand-paging Shard~2 lazily from NVMe via \texttt{mmap} (\textbf{26.91~GiB $\le$ 28.5~GiB} under Linux Cgroup v2 \texttt{MemorySwapMax=0}). Opt-in uncensored twins (\texttt{v3.0-r2}) apply TPE-optimized signed Gated-Residual over-projection ($\beta \in [1.83, 2.39]$ across \texttt{blk.31..47}, 0/100 refusals at 0.0818 KLD) plus signed $\beta = 2.2508$ \texttt{blk.48} MTP synchronization.
+    By projecting the $320\text{M}$-row Per-Layer Embedding table with \textbf{\texttt{PCA-Wiener} ($D=256$) + \texttt{RaBitQ Q1\_0}} \cite{rabitq2024}, Shard~2 shrinks from 26.82~GiB (\texttt{IQ4\_NL}) to \textbf{10.73~GiB}, reinvesting $+16.09$~GiB directly into all 512/512 unpruned routed experts, \textbf{FP64 Woodbury DualGram} signed-scale \texttt{Q2\_0}, and the built-in 0.81~GiB \texttt{blk.48} NextN MTP head. \texttt{MaxQ-64GB} totals 53.99~GiB (45.08~GiB peak \texttt{VmHWM}, \texttt{RssAnon = 1.81~GiB}). \texttt{MaxQ-32GB} further applies \textbf{\texttt{ConeCollapse}} across 42 interior MoE layers ($K=640\to 512$ with exact post-quantization \texttt{F32} \texttt{ffn\_down\_exps.bias} centroid compensation), compressing Shard~1 to 24.98~GiB while demand-paging Shard~2 lazily from NVMe via \texttt{mmap} (\textbf{26.91~GiB $\le$ 28.5~GiB} under Linux Cgroup v2 \texttt{MemorySwapMax=0}).
     \item \textbf{64~GB \texttt{DeepSeek-V4-Flash-0731 MaxQ-v4} (57.99~GiB, 100\% std \texttt{ggml}, 0 custom types)}:
     Replaces all custom MLA/Indexer types with \texttt{0731}-imatrix-weighted standard \texttt{ggml} formats (446 2D K-quant projections, 9 full-width $K=2048$ uncentered ridge anchor layers, and 34 $K=1792$ \texttt{ConeCollapse} layers with $0.60\,\boldsymbol{\mu}$ shrunk residual bias and FP64 Woodbury DualGram $N_C=384$). Because it uses zero custom tensor types, \texttt{MaxQ-v4} executes natively on CPU, Apple Metal (\textbf{27.0~tok/s} \texttt{tg128} / \textbf{169.4~tok/s} \texttt{pp512} on 64~GB M5 Max), CUDA, and Vulkan.
     \item \textbf{16~GB \texttt{NVIDIA-Nemotron-3.5-30B-A3B} (\texttt{VQ3-64} 13.30~GiB \& \texttt{MaxQ-16GB} 13.39~GiB)}:
@@ -161,7 +161,7 @@ whereas linear $L_1$ rescaling $\alpha_{L_1} = (\sum_{i=1}^K w_i)/(\sum_{i=1}^k 
 By orthogonality, $\mathbb{E}\|\sum_{i=1}^k (\alpha w_i)\mathbf{e}_{k_i}\|_2^2 = \sigma_e^2 \alpha^2 \sum_{i=1}^k w_i^2 = \sigma_e^2 \sum_{i=1}^K w_i^2 \implies \alpha = \alpha_{L_2}$. For typical $l \ge 3$ weights at $k=4$, $\alpha_{L_1}=1.2295$ ($\Gamma=1.388$), whereas $\alpha_{L_2}=1.0435$.
 \end{proof}
 
-Empirically on \texttt{DeepSeek-V4 284B}, switching from $\alpha_{L_1}$ to $\alpha_{L_2}$ at $k=4$ cuts top-10 next-token KL-divergence by \textbf{58.1\%} ($0.0671 \to 0.0281$~nats), while $k=5$ ($\alpha_{L_2}$) incurs only 0.0042~nats ($+0.42\%$ local $\Delta\text{PPL}$). Unpruned Top-6 (DeepSeek/Nemotron) and Top-10 (Qwen3.8) remain strictly default in \texttt{v3.1.0}.
+Empirically on \texttt{DeepSeek-V4 284B}, switching from $\alpha_{L_1}$ to $\alpha_{L_2}$ at $k=4$ cuts top-10 next-token KL-divergence by \textbf{58.1\%} ($0.0671 \to 0.0281$~nats), while $k=5$ ($\alpha_{L_2}$) incurs only 0.0042~nats ($+0.42\%$ local $\Delta\text{PPL}$). Unpruned Top-6 (DeepSeek/Nemotron) and Top-10 (Qwen3.8) remain strictly default in \texttt{v3.1.1}.
 
 \section{\texttt{RouteCrack 2.0} \& the 832~B L1 Micro-Arbiter}
 \label{sec:spec}
@@ -182,27 +182,9 @@ Implemented in \texttt{common/rc\_routecrack2.h} and \texttt{common/rc\_arbiter\
     \item \textbf{Phase C --- 832~B L1-Resident SIMD Micro-Arbiter (\texttt{rc\_arbiter\_l1.h})}: Evaluates a 10-feature vector (\texttt{mtp\_p1}, \texttt{mtp\_margin}, \texttt{suffix\_match\_len}, \texttt{suffix\_hit\_count}, \texttt{zone\_is\_hot}, \texttt{sf\_tt\_wins}, \texttt{sf\_tt\_history}, \texttt{depth\_d}, \texttt{recent\_accept\_ema}, \texttt{is\_structural\_tok}) through a cache-line-aligned \texttt{[10$\to$16$\to$1]} ClippedReLU MLP with pre-sanitized \texttt{NaN}/\texttt{$\pm$Inf} inputs and a degree-5 Remez minimax \texttt{fast\_sigmoid} ($<3\times 10^{-6}$ max error). Each weight profile occupies \textbf{832~B (13 cache lines, 100\% L1d-resident)} and executes via unaligned \textbf{AVX-512F} (\texttt{\_mm512\_loadu\_ps}), \textbf{AVX2+FMA} (\texttt{\_mm256\_loadu\_ps}), \textbf{ARM64 NEON} (\texttt{vfmaq\_n\_f32}), or portable C++17 scalar code with 100\% cross-ISA bit-identity on adversarial \texttt{NaN}/\texttt{$\pm$Inf} inputs. At model load, the engine automatically selects \texttt{kRC2DefaultArbiter} (\texttt{n\_layer\_nextn > 0}), \texttt{kRC2DraftlessArbiter} (non-MTP $\le 35$~GiB), or \texttt{kRC2HeavyMoEDraftlessArbiter} (non-MTP MoE $>35$~GiB, plus $n_{\max}=3$ cap on dense CPU models to fit one \texttt{mr=4} GEMM pass).
 \end{enumerate}
 
-\section{Microarchitectural \& Multi-Platform Systems Engineering}
-\label{sec:sys}
-
-\begin{enumerate}
-    \item \textbf{512-Bit \texttt{Q1\_0}/\texttt{Q2\_0}/\texttt{MXFP4} Kernels \& Multi-Threaded \texttt{GATED\_DELTA\_NET}}: Dedicated AVX-512 VNNI/BW single- and multi-column (\texttt{1x8/4/3/2}) kernels accelerate \texttt{Q1\_0} (41), signed-scale \texttt{Q2\_0} (42), overflow-free \texttt{Q8\_0}, and \texttt{MXFP4}, while fused 8-\texttt{zmm} FMA multi-threaded \texttt{GATED\_DELTA\_NET} removes inner barriers across all 36 \texttt{Qwen3.8} linear-attention layers and restores dynamic $4\cdot n_{\text{th}}$ causal-triangle load balancing on \texttt{FLASH\_ATTN\_EXT} prefill.
-    \item \textbf{Zero-Copy 3D MoE \texttt{{-}{-}repack} \& \texttt{q8\_cache} Aliasing Cure}: Fixes upstream \texttt{ggml\_compute\_forward\_mul\_mat\_tiled} / \texttt{mul\_mat\_id\_tiled} \texttt{q8\_cache} workspace aliasing, clears \texttt{last\_mmid\_ids\_data} on non-\texttt{MUL\_MAT\_ID} nodes, and skips heap repacking on 3D MoE tensors (\texttt{ne[2] >= 64}) so zero-copy \texttt{mmap} is preserved (\texttt{Qwen3.8 MaxQ-64GB} \texttt{RssAnon} drops $5.4\times$ from 9.81~GiB to \textbf{1.81~GiB}, \texttt{batch=1} \texttt{{-}{-}repack} vs.\ \texttt{{-}{-}no-repack} $\text{KLD}=0.00000$).
-    \item \textbf{Non-Convoy Threading, Inward 2~MiB THP, \& Hardened Per-UID IPC}: Pairing \texttt{-t (N\_CORES - 1) -tb (N\_CORES - 1) {-}{-}poll 0 {-}{-}poll-batch 0} eliminates OS barrier convoys ($+25.9\%$ \texttt{pp512}, $+31.3\%$ \texttt{tg128} over oversubscribed \texttt{-t N {-}{-}poll 50}). \texttt{MADV\_HUGEPAGE} in \texttt{src/llama-mmap.cpp} aligns inward to 2~MiB boundaries under \texttt{THP=madvise} so lazy PLE pages are never pre-faulted. All runtime control and HARP-Cache shared-memory files are isolated per-UID (\texttt{0700} dir / \texttt{0600} mode, \texttt{O\_NOFOLLOW}, explicit \texttt{DSV4\_MOE\_CFG\_PATH}), with zero world-writable global temp paths.
-    \item \textbf{\texttt{/dev/shm} Hybrid State Snapshots}: Saving and restoring a 512-token \texttt{Qwen3.8} hybrid state (233.14~MiB $= 36$ GDN \texttt{[48$\times$128$\times$128]} FP32 + 12 QSA \texttt{Q8\_0} KV + 1 checkpoint) completes in \textbf{38.49~ms} average (6.11~GiB/s, $162\times$ faster than cold prefill; \textbf{19~ms} with \texttt{{-}{-}ctx-checkpoints 0}) with 100\% bit-exact greedy continuation.
-\end{enumerate}
-
-\section{Empirical Evaluation (\texttt{v3.1.0})}
-\label{sec:eval}
-
-All CPU evaluations execute on a single 16-core AMD Ryzen 9 9955HX (Zen~5, 64~MB dual-CCD L3, 64~GB DDR5-5600, 0~GPU, \texttt{THP=madvise}, \texttt{RC\_TABLES\_DIR=/nonexistent} on non-Nemotron models). Raw JSON logs are archived under \texttt{benchmarks/results/}.
-
-\subsection{Blind Perplexity \& Logit KLD Across All 3 Tiers}
-Table~\ref{tab:quality} reports zero-overlap blind \texttt{wiki-alt.txt} evaluations across all three tiers ($0.000000\%$ 8-gram and 13-gram calibration overlap). On \texttt{Qwen3.8-Flash-Next}, \texttt{MaxQ-64GB} (53.99~GiB) outperforms \texttt{ISTA-DASLab GSQ-RCO-Coder-IQ1\_M} (54.40~GiB) by \textbf{$-1.6591$ PPL} ($3.53\times$ smaller degradation over \texttt{BF16}), \textbf{$-46.6\%$ Mean KLD}, and \textbf{$+8.93$~pp Top-1 agreement} while embedding the 0.81~GiB \texttt{blk.48} MTP module. On \texttt{DeepSeek-V4 284B} (strictly unseen chunks \texttt{3..51}, 137,935 tokens), donor-free standard-\texttt{ggml} \texttt{MaxQ-v4} achieves \textbf{6.8471 PPL} and \textbf{0.6257~nats} Mean KLD ($-12.84\%$ KLD vs.\ \texttt{MaxQ-Fractal}). On \texttt{Nemotron-3.5 30B}, \texttt{VQ3-64} (13.30~GiB) reaches \textbf{6.761 PPL} (\texttt{0.0871} KLD vs.\ \texttt{MXFP4} 6.596) and universal standard-\texttt{ggml} \texttt{MaxQ-16GB} (13.39~GiB) passes strict 15.0~GiB Cgroup v2 enforcement at \textbf{14.304~GiB \texttt{VmHWM}}.
-
 \begin{table*}[t]
 \centering
-\caption{Three-tier blind \texttt{wiki-alt.txt} signal fidelity and resident memory footprints (\texttt{llama-modchip v3.1.0}). \texttt{Qwen3.8} and \texttt{Nemotron} evaluated on $40\times 512$ blind chunks; \texttt{DeepSeek-V4 284B} evaluated on all 51 \texttt{AtomicChat} \texttt{ref5632.kld} chunks (143,565 scored tokens).}
+\caption{Three-tier blind \texttt{wiki-alt.txt} signal fidelity and resident memory footprints (\texttt{llama-modchip v3.1.1}). \texttt{Qwen3.8} and \texttt{Nemotron} evaluated on $40\times 512$ blind chunks; \texttt{DeepSeek-V4 284B} evaluated on all 51 \texttt{AtomicChat} \texttt{ref5632.kld} chunks (143,565 scored tokens).}
 \label{tab:quality}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}llcccccc@{}}
@@ -224,33 +206,51 @@ Table~\ref{tab:quality} reports zero-overlap blind \texttt{wiki-alt.txt} evaluat
 }
 \end{table*}
 
+\section{Microarchitectural \& Multi-Platform Systems Engineering}
+\label{sec:sys}
+
+\begin{enumerate}
+    \item \textbf{512-Bit \texttt{Q1\_0}/\texttt{Q2\_0}/\texttt{MXFP4} Kernels \& Multi-Threaded \texttt{GATED\_DELTA\_NET}}: Dedicated AVX-512 VNNI/BW single- and multi-column (\texttt{1x8/4/3/2}) kernels accelerate \texttt{Q1\_0} (41), signed-scale \texttt{Q2\_0} (42), overflow-free \texttt{Q8\_0}, and \texttt{MXFP4}, while fused 8-\texttt{zmm} FMA multi-threaded \texttt{GATED\_DELTA\_NET} removes inner barriers across all 36 \texttt{Qwen3.8} linear-attention layers and restores dynamic $4\cdot n_{\text{th}}$ causal-triangle load balancing on \texttt{FLASH\_ATTN\_EXT} prefill.
+    \item \textbf{Zero-Copy 3D MoE \texttt{{-}{-}repack} \& \texttt{q8\_cache} Aliasing Cure}: Fixes upstream \texttt{ggml\_compute\_forward\_mul\_mat\_tiled} / \texttt{mul\_mat\_id\_tiled} \texttt{q8\_cache} workspace aliasing, clears \texttt{last\_mmid\_ids\_data} on non-\texttt{MUL\_MAT\_ID} nodes, and skips heap repacking on 3D MoE tensors (\texttt{ne[2] >= 64}) so zero-copy \texttt{mmap} is preserved (\texttt{Qwen3.8 MaxQ-64GB} \texttt{RssAnon} drops $5.4\times$ from 9.81~GiB to \textbf{1.81~GiB}, \texttt{batch=1} \texttt{{-}{-}repack} vs.\ \texttt{{-}{-}no-repack} $\text{KLD}=0.00000$).
+    \item \textbf{Non-Convoy Threading, Inward 2~MiB THP, \& Hardened Per-UID IPC}: Pairing \texttt{-t (N\_CORES - 1) -tb (N\_CORES - 1) {-}{-}poll 0 {-}{-}poll-batch 0} eliminates OS barrier convoys ($+25.9\%$ \texttt{pp512}, $+31.3\%$ \texttt{tg128} over oversubscribed \texttt{-t N {-}{-}poll 50}). \texttt{MADV\_HUGEPAGE} in \texttt{src/llama-mmap.cpp} aligns inward to 2~MiB boundaries under \texttt{THP=madvise} so lazy PLE pages are never pre-faulted. All runtime control and HARP-Cache shared-memory files are isolated per-UID (\texttt{0700} dir / \texttt{0600} mode, \texttt{O\_NOFOLLOW}, explicit \texttt{DSV4\_MOE\_CFG\_PATH}), with zero world-writable global temp paths.
+    \item \textbf{\texttt{/dev/shm} Hybrid State Snapshots}: Saving and restoring a 512-token \texttt{Qwen3.8} hybrid state (233.14~MiB $= 36$ GDN \texttt{[48$\times$128$\times$128]} FP32 + 12 QSA \texttt{Q8\_0} KV + 1 checkpoint) completes in \textbf{38.49~ms} average (6.11~GiB/s, $162\times$ faster than cold prefill; \textbf{19~ms} with \texttt{{-}{-}ctx-checkpoints 0}) with 100\% bit-exact greedy continuation.
+\end{enumerate}
+
+\section{Empirical Evaluation (\texttt{v3.1.1})}
+\label{sec:eval}
+
+All CPU evaluations execute on a single 16-core AMD Ryzen 9 9955HX (Zen~5, 64~MB dual-CCD L3, 64~GB DDR5-5600, 0~GPU, \texttt{THP=madvise}, \texttt{RC\_TABLES\_DIR=/nonexistent} on non-Nemotron models). Raw JSON logs are archived under \texttt{benchmarks/results/}.
+
+\subsection{Blind Perplexity \& Logit KLD Across All 3 Tiers}
+Table~\ref{tab:quality} reports zero-overlap blind \texttt{wiki-alt.txt} evaluations across all three tiers ($0.000000\%$ 8-gram and 13-gram calibration overlap). On \texttt{Qwen3.8-Flash-Next}, \texttt{MaxQ-64GB} (53.99~GiB) outperforms \texttt{ISTA-DASLab GSQ-RCO-Coder-IQ1\_M} (54.40~GiB) by \textbf{$-1.6591$ PPL} ($3.53\times$ smaller degradation over \texttt{BF16}), \textbf{$-46.6\%$ Mean KLD}, and \textbf{$+8.93$~pp Top-1 agreement} while embedding the 0.81~GiB \texttt{blk.48} MTP module. On \texttt{DeepSeek-V4 284B} (strictly unseen chunks \texttt{3..51}, 137,935 tokens), donor-free standard-\texttt{ggml} \texttt{MaxQ-v4} achieves \textbf{6.8471 PPL} and \textbf{0.6257~nats} Mean KLD ($-12.84\%$ KLD vs.\ \texttt{MaxQ-Fractal}). On \texttt{Nemotron-3.5 30B}, \texttt{VQ3-64} (13.30~GiB) reaches \textbf{6.761 PPL} (\texttt{0.0871} KLD vs.\ \texttt{MXFP4} 6.596) and universal standard-\texttt{ggml} \texttt{MaxQ-16GB} (13.39~GiB) passes strict 15.0~GiB Cgroup v2 enforcement at \textbf{14.304~GiB \texttt{VmHWM}}.
+
 \subsection{\texttt{RouteCrack 2.0} Head-to-Head Throughput Across All 3 Flagship Families}
 We benchmark \texttt{RouteCrack 2.0} at $T=0$ across four realistic coding and agentic workloads---\texttt{W1} (152-LOC Claude Code Python refactoring), \texttt{W2} (multi-tool JSON/patch synthesis), \texttt{W3} (greenfield C99 lock-free SPSC ring buffer), and \texttt{W4} (bilingual IT/EN technical prose)---recording exact per-workload and aggregate throughput in \texttt{benchmarks/results/*\_routecrack2\_v31.json} (Table~\ref{tab:rc2} and Figure~\ref{fig:rc2}).
 
 \begin{table*}[t]
 \centering
-\caption{Head-to-head \texttt{RouteCrack 2.0} (\texttt{v3.1.0}) speculative decoding throughput (tok/s) on 16 Zen~5 cores (0~GPU, $T=0$) directly reconciled with \texttt{benchmarks/results/\{qwen38,dsv4,nemotron\}\_routecrack2\_v31.json}. \texttt{Qwen3.8} benchmarked on \texttt{MaxQ-64GB-Abliterated} (256~tok/wl); \texttt{DeepSeek-V4} on \texttt{MaxQ-v4} (192~tok/wl); \texttt{Nemotron} on \texttt{Fractal-MXFP4} (256~tok/wl).}
+\caption{Head-to-head \texttt{RouteCrack 2.0} (\texttt{v3.1.1}) speculative decoding throughput (tok/s) on 16 Zen~5 cores (0~GPU, $T=0$) directly reconciled with \texttt{benchmarks/results/\{qwen38,dsv4,nemotron\}\_routecrack2\_v31.json}. \texttt{Qwen3.8} benchmarked on aligned \texttt{MaxQ-64GB} (256~tok/wl); \texttt{DeepSeek-V4} on \texttt{MaxQ-v4} (192~tok/wl); \texttt{Nemotron} on \texttt{Fractal-MXFP4} (256~tok/wl).}
 \label{tab:rc2}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}llcccccccc@{}}
 \toprule
 \textbf{Model Family} & \textbf{Configuration} & \textbf{W1 Refact.} & \textbf{W2 JSON} & \textbf{W3 C99} & \textbf{W4 Prose} & \textbf{Aggregate} & \textbf{vs.\ $N=1$} & \textbf{Accept} & \textbf{Mean Len} \\
 \midrule
-\multirow{4}{*}{\shortstack[l]{\textbf{\texttt{Qwen3.8-MaxQ-64GB}}\\\textit{(-Abliterated, 176.5B,}\\\textit{5B Active, blk.48 MTP)}}}
- & Pure $N=1$ (\texttt{none}) & 8.58 & 8.76 & 8.84 & 8.82 & 8.78 tok/s & $1.00\times$ & 0.0\% & 1.00 \\
- & \texttt{MTP-1} (\texttt{draft-mtp -d 1}) & 12.45 & 12.70 & 12.02 & 11.66 & 12.24 tok/s & $+39.4\%$ & 90.62\% & 1.91 \\
- & \texttt{v3.0} (\texttt{draft-mtp}, $n_{\max}=3$) & 16.77 & 17.13 & 12.72 & 10.77 & 13.87 tok/s & $+57.9\%$ & 71.62\% & 3.28 \\
- & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.0})} & \textbf{21.98} & \textbf{17.85} & \textbf{12.98} & \textbf{13.47} & \textbf{15.88 tok/s} & \textbf{+80.8\%} & \textbf{82.40\%} & \textbf{3.71} \\
+\multirow{4}{*}{\shortstack[l]{\textbf{\texttt{Qwen3.8-MaxQ-64GB}}\\\textit{(Aligned, 176.5B,}\\\textit{5B Active, blk.48 MTP)}}}
+ & Pure $N=1$ (\texttt{none}) & 8.50 & 8.68 & 8.68 & 8.68 & 8.67 tok/s & $1.00\times$ & 0.0\% & 1.00 \\
+ & \texttt{MTP-1} (\texttt{draft-mtp -d 1}) & 12.25 & 12.57 & 11.89 & 11.20 & 12.00 tok/s & $+38.4\%$ & 89.57\% & 1.90 \\
+ & \texttt{v3.0} (\texttt{draft-mtp}, $n_{\max}=3$) & 16.61 & 16.84 & 13.24 & 10.76 & 13.94 tok/s & $+60.8\%$ & 73.79\% & 3.33 \\
+ & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.1})} & \textbf{21.38} & \textbf{17.38} & \textbf{12.63} & \textbf{12.78} & \textbf{15.34 tok/s} & \textbf{+77.0\%} & \textbf{79.95\%} & \textbf{3.66} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{\textbf{\texttt{DeepSeek-V4 MaxQ-v4}}\\\textit{(284.3B, 13.2B Active,}\\\textit{Heavy-MoE, Top-6)}}}
  & Pure $N=1$ (\texttt{none}) & 6.48 & 6.70 & 6.90 & 7.01 & 6.80 tok/s & $1.00\times$ & 0.0\% & 1.00 \\
  & \texttt{v3.0} (\texttt{ngram-map-k}) & 11.90 & 7.39 & 6.74 & 6.55 & 7.73 tok/s & $+13.6\%$ & 85.49\% & 2.42 \\
- & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.0})} & \textbf{12.31} & \textbf{7.55} & 6.74 & 6.49 & \textbf{7.79 tok/s} & \textbf{+14.5\%} & \textbf{85.92\%} & \textbf{2.97} \\
+ & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.1})} & \textbf{12.31} & \textbf{7.55} & 6.74 & 6.49 & \textbf{7.79 tok/s} & \textbf{+14.5\%} & \textbf{85.92\%} & \textbf{2.97} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{\textbf{\texttt{Nemotron-3.5-30B}}\\\textit{(Fractal-MXFP4, 30B,}\\\textit{3B Active, Mamba-2)}}}
  & Pure $N=1$ (\texttt{none}) & 22.20 & 22.57 & 22.69 & 22.61 & 22.60 tok/s & $1.00\times$ & 0.0\% & 1.00 \\
  & \texttt{v3.0} (\texttt{ngram-map-k}) & 42.54 & 26.08 & 22.65 & 23.80 & 27.13 tok/s & $+20.0\%$ & 71.86\% & 3.18 \\
- & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.0})} & \textbf{42.18} & \textbf{28.83} & \textbf{22.97} & \textbf{24.72} & \textbf{28.20 tok/s} & \textbf{+24.8\%} & \textbf{78.59\%} & \textbf{3.35} \\
+ & \textbf{\texttt{RouteCrack 2.0} (\texttt{v3.1.1})} & \textbf{42.18} & \textbf{28.83} & \textbf{22.97} & \textbf{24.72} & \textbf{28.20 tok/s} & \textbf{+24.8\%} & \textbf{78.59\%} & \textbf{3.35} \\
 \bottomrule
 \end{tabular}%
 }
@@ -259,13 +259,13 @@ We benchmark \texttt{RouteCrack 2.0} at $T=0$ across four realistic coding and a
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/fig3_routecrack2_speedup.pdf}
-\caption{Per-workload and aggregate decode throughput of \texttt{RouteCrack 2.0} (\texttt{v3.1.0}) vs.\ Pure $N=1$ and \texttt{v3.0} speculators across \texttt{W1} (Refactor), \texttt{W2} (JSON Tools), \texttt{W3} (C99), \texttt{W4} (Prose), and Aggregate on 16 Zen~5 cores (0~GPU).}
+\caption{Per-workload and aggregate decode throughput of \texttt{RouteCrack 2.0} (\texttt{v3.1.1}) vs.\ Pure $N=1$ and \texttt{v3.0} speculators across \texttt{W1} (Refactor), \texttt{W2} (JSON Tools), \texttt{W3} (C99), \texttt{W4} (Prose), and Aggregate on 16 Zen~5 cores (0~GPU).}
 \label{fig:rc2}
 \end{figure*}
 
 Key observations from Table~\ref{tab:rc2}:
 \begin{itemize}
-    \item \textbf{\texttt{Qwen3.8} ($4/4$ Workload Wins)}: \texttt{RouteCrack 2.0} wins every workload over both \texttt{MTP-1} ($+29.7\%$) and \texttt{v3.0 draft-mtp} ($+14.5\%$), accelerating \texttt{W1} refactoring to \textbf{21.98~tok/s} ($+156\%$ vs.\ $N=1$) via sub-250~ns fast-path suffix bypass and improving \texttt{W4} prose by $+25.1\%$ over \texttt{v3.0 draft-mtp} (13.47 vs.\ 10.77~tok/s) because the L1 Micro-Arbiter avoids wasting sequential MTP passes when $q_d$ drops. Outputs are 100\% greedy bit-exact on structured \texttt{W1+W2} (254/254 tokens).
+    \item \textbf{\texttt{Qwen3.8} ($+77.0\%$ vs.\ $N=1$, $+10.1\%$ vs.\ \texttt{v3.0})}: \texttt{RouteCrack 2.0} lifts aggregate throughput to \textbf{15.34~tok/s} ($+27.9\%$ vs.\ \texttt{MTP-1}, $+10.1\%$ vs.\ \texttt{v3.0 draft-mtp}), accelerating \texttt{W1} refactoring to \textbf{21.38~tok/s} ($2.52\times$ vs.\ $N=1$, $+28.7\%$ vs.\ \texttt{v3.0}) via sub-250~ns fast-path suffix bypass and improving \texttt{W4} prose by $+18.8\%$ over \texttt{v3.0 draft-mtp} (12.78 vs.\ 10.76~tok/s) because the L1 Micro-Arbiter avoids wasting sequential MTP passes when $q_d$ drops (\texttt{W3} 12.63 vs.\ 13.24~tok/s reflects conservative stem gating on greenfield C99). Outputs are 100\% greedy bit-exact on structured \texttt{W1+W2} (254/254 tokens).
     \item \textbf{\texttt{DeepSeek-V4 284B} \& \texttt{Nemotron-30B}}: 28-bit Tagged Mode Refutation eliminates \texttt{W2} JSON divergence completely (100\% greedy bit-exact on \texttt{W1+W2} for both models), lifting \texttt{Nemotron} \texttt{W2} by $+10.5\%$ (28.83 vs.\ 26.08~tok/s) and \texttt{DeepSeek-V4} \texttt{W1} to \textbf{12.31~tok/s} ($+90.0\%$ vs.\ $N=1$).
 \end{itemize}
 
@@ -281,13 +281,13 @@ Table~\ref{tab:platforms} summarizes verified community and reference scaling ac
 \toprule
 \textbf{Hardware Platform} & \textbf{Cores / Cache / GPU} & \textbf{Memory} & \textbf{Model \& Format} & \textbf{Prefill (\texttt{tok/s})} & \textbf{Base / Cold} & \textbf{Speculative / Burst} \\
 \midrule
-AMD Ryzen 9 9955HX (Zen~5) & 16C (\texttt{-t 15 {-}{-}poll 0}, AVX-512) & 64 GB DDR5 (0 GPU) & \textbf{Qwen3.8 MaxQ-64GB} & \textbf{72.0} & 8.78 ($N=1$) & \textbf{15.88 avg / 21.98 peak} \\
+AMD Ryzen 9 9955HX (Zen~5) & 16C (\texttt{-t 15 {-}{-}poll 0}, AVX-512) & 64 GB DDR5 (0 GPU) & \textbf{Qwen3.8 MaxQ-64GB} & \textbf{72.0} & 8.67 ($N=1$) & \textbf{15.34 avg / 21.38 peak} \\
 AMD Ryzen 9 9955HX (Zen~5) & 16C (\texttt{-t 15 {-}{-}poll 0}, AVX-512) & 32 GB Tier (26.9 GiB RSS) & \textbf{Qwen3.8 MaxQ-32GB} & \textbf{74.6} & 6.67 ($N=1$) & \textbf{11.45 -- 14.29 tok/s} \\
 AMD Ryzen 9 9955HX (Zen~5) & 16C (\texttt{-t 15 {-}{-}poll 0}, AVX-512) & 64 GB DDR5 (58.7 GiB RSS) & \textbf{DS-V4 284B MaxQ-v4} & \textbf{45.0 -- 50.5} & 6.80 ($N=1$) & \textbf{7.79 avg / 12.31 peak} \\
 Apple M5 Max (Unified SoC) & 18C CPU + 40C Metal GPU & 64 GB LPDDR5X (0 Swap) & \textbf{DS-V4 284B MaxQ-v4} & \textbf{169.4} & \textbf{27.00} (\texttt{tg128}) & \textbf{20.70 -- 23.60} (server) \\
 AMD Threadripper PRO 7985WX & 64C/128T (8 CCDs, 256 MB L3) & 256 GB 8-Ch DDR5 & Nemotron-30B (\texttt{-t 32}) & \textbf{386.0} & \textbf{73.84 -- 80.14} & \textbf{111.62 tok/s} \\
 AMD 7945HX3D + RX 9070 XT & 16C (128 MB L3) + 16 GB Vulkan & 94 GB DDR5 + 16 GB & Nemotron-30B (\texttt{MXFP4}) & \textbf{563.0} & \textbf{75.10 tok/s} & \textbf{80.80 tok/s} (256K) \\
-Apple M3 Max / M4 Max & ARM64 NEON + Metal GPU & 36--64 GB Unified & Nemotron-30B (\texttt{Fractal-64}) & \textbf{860.1} & \textbf{71.6 -- 78.6} & \textbf{78.60+ tok/s} \\
+Apple M3 Max / M4 Max & ARM64 NEON + Metal GPU & 36--64 GB Unified & Nemotron-30B (\texttt{Fractal}/\texttt{Q4}) & \textbf{860.1} & \textbf{71.6 -- 78.6} & \textbf{236.3 -- 249.8} (\texttt{RC2}) \\
 AWS Graviton3 \texttt{m7g.2xlarge} & 8 vCPU ARM64 Neoverse-V1 & 31 GB DDR5 (0 GPU) & Nemotron-30B (\texttt{-t 8}) & \textbf{101.7} & \textbf{41.05 tok/s} & \textbf{44.97 tok/s} \\
 \bottomrule
 \end{tabular}%
@@ -302,9 +302,9 @@ AWS Graviton3 \texttt{m7g.2xlarge} & 8 vCPU ARM64 Neoverse-V1 & 31 GB DDR5 (0 GP
 \end{enumerate}
 
 \section{Conclusion}
-\texttt{llama-modchip v3.1.0} demonstrates that pairing donor-free \texttt{MaxQ} compression (\texttt{PCA-Wiener + RaBitQ Q1\_0} PLE, FP64 Woodbury DualGram, and \texttt{ConeCollapse}), a zero-collision multi-ISA \texttt{ggml} ABI (\texttt{44}/\texttt{45}), zero-copy 3D MoE \texttt{{-}{-}repack}, and the \texttt{RouteCrack 2.0} 832~B L1 Micro-Arbiter brings frontier 30B--284B models onto commodity 16~GB, 32~GB, and 64~GB workstations with verified speed and quality parity across Linux, macOS Metal, and Windows. Full source code, unified patches, preflight verification tools, and raw benchmark artifacts are published at \url{https://github.com/synchopate/llama-modchip}.
+\texttt{llama-modchip v3.1.1} demonstrates that pairing donor-free \texttt{MaxQ} compression (\texttt{PCA-Wiener + RaBitQ Q1\_0} PLE, FP64 Woodbury DualGram, and \texttt{ConeCollapse}), a zero-collision multi-ISA \texttt{ggml} ABI (\texttt{44}/\texttt{45}), zero-copy 3D MoE \texttt{{-}{-}repack}, and the \texttt{RouteCrack 2.0} 832~B L1 Micro-Arbiter brings frontier 30B--284B models onto commodity 16~GB, 32~GB, and 64~GB workstations with verified speed and quality parity across Linux, macOS Metal, and Windows. Full source code, unified patches, preflight verification tools, and raw benchmark artifacts are published at \url{https://github.com/synchopate/llama-modchip}.
 
-\clearpage
+\newpage
 \raggedbottom
 \begin{thebibliography}{10}
 

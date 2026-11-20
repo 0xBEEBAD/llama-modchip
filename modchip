@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ♟️ ./modchip — Unified CLI for llama-modchip v3.1.0 (16GB / 32GB / 64GB MaxQ)
+# ♟️ ./modchip — Unified CLI for llama-modchip v3.1.1 (16GB / 32GB / 64GB MaxQ)
 # ==============================================================================
 # Usage:
-#   ./modchip setup [args]          # Install unified v3.1.0 engine & select 16GB/32GB/64GB GGUF
-#   ./modchip download-bin [--all-tools] [dir]  # Download CPU-matched Linux x86_64 v3.1.0 binary (--all-tools adds bench/perplexity/quantize)
-#   ./modchip start [model.gguf]    # Start v3.1.0 CPU/Hybrid Server + Web UI Gateway in background
+#   ./modchip setup [args]          # Install unified v3.1.1 engine & select 16GB/32GB/64GB GGUF
+#   ./modchip download-bin [--all-tools] [dir]  # Download CPU-matched Linux x86_64 v3.1.1 binary (--all-tools adds bench/perplexity/quantize)
+#   ./modchip start [model.gguf]    # Start v3.1.1 CPU/Hybrid Server + Web UI Gateway in background
 #   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s & RouteCrack 2.0 telemetry
 #   ./modchip bench                 # Run 2-stage speed test & print shareable CPU scorecard
 #   ./modchip eval [args]           # Run 100-pt Quality, Tool-Calling, Coding & Needle Gate
 #   ./modchip web                   # Open Live Web Chat & Telemetry HUD (http://127.0.0.1:8787)
 #   ./modchip claude [args]         # Launch Claude Code CLI wired to local CPU engine
 #   ./modchip status                # Inspect live server, HugePages & per-UID Modchip SHM
-#   ./modchip checksums             # Print pinned v3.1.0 Fleet GGUF & portable binary SHA-256s
+#   ./modchip checksums             # Print pinned v3.1.1 Fleet GGUF & portable binary SHA-256s
 #   ./modchip tui                   # Launch interactive Curses TUI controller
 #   ./modchip stop                  # Stop background server & gateway
 # ==============================================================================
@@ -285,7 +285,7 @@ cmd_start() {
 
     if [[ ! -f "$model" ]]; then
         echo -e "${YELLOW}[!] Model file not found at: ${model}${RESET}"
-        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the v3.1.0 engine & select your RAM tier (16 GB / 32 GB / 64 GB),"
+        echo -e "    • Run ${BOLD}./modchip setup${RESET} to install the v3.1.1 engine & select your RAM tier (16 GB / 32 GB / 64 GB),"
         echo -e "    • Or bring your own GGUF: ${BOLD}./modchip start /path/to/your_model.gguf${RESET}"
         exit 1
     fi
@@ -321,7 +321,7 @@ cmd_start() {
             echo -e "${YELLOW}[!] start_server.sh not found. Running './modchip setup --skip-model --model $model' first...${RESET}"
             "${REPO_ROOT}/install.sh" --skip-model --model "$model"
         fi
-        echo -e "${CYAN}[*] Starting llama-modchip v3.1.0 Engine ($(basename "$model")) in background...${RESET}"
+        echo -e "${CYAN}[*] Starting llama-modchip v3.1.1 Engine ($(basename "$model")) in background...${RESET}"
         SERVER_HOST="${SERVER_HOST}" nohup "${REPO_ROOT}/start_server.sh" "$model" "$@" > "${WORKSPACE_DIR}/logs/server.log" 2>&1 &
         echo $! > "$SERVER_PID_FILE"
         if [[ -n "$explicit_model" ]]; then
@@ -416,7 +416,7 @@ cmd_start() {
     fi
 
     echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${GREEN}║   llama-modchip v3.1.0 is LIVE — Choose how you want to interact:            ║${RESET}"
+    echo -e "${BOLD}${GREEN}║   llama-modchip v3.1.1 is LIVE — Choose how you want to interact:            ║${RESET}"
     echo -e "${BOLD}${GREEN}╠══════════════════════════════════════════════════════════════════════════════╣${RESET}"
     echo -e "  🌐 ${BOLD}Live Web Chat & Telemetry HUD${RESET} : ${CYAN}http://${GATEWAY_HOST}:${GATEWAY_PORT}${RESET}"
     echo -e "  💬 ${BOLD}Interactive Terminal Chat${RESET}     : ${GREEN}./modchip chat${RESET}"
@@ -505,7 +505,7 @@ ensure_ready_and_running() {
         return 0
     fi
     if [[ ! -f "$DEFAULT_MODEL" ]] || [[ ! -x "${WORKSPACE_DIR}/bin/llama-server-nemotron" ]]; then
-        echo -e "${CYAN}[*] First run detected — installing v3.1.0 engine & downloading model automatically...${RESET}"
+        echo -e "${CYAN}[*] First run detected — installing v3.1.1 engine & downloading model automatically...${RESET}"
         "${REPO_ROOT}/install.sh"
         DEFAULT_MODEL="$(resolve_default_model)"
     fi
@@ -549,7 +549,7 @@ cmd_quantize() {
     if [[ $# -gt 0 && -x "$qbin" ]]; then
         exec "$qbin" "$@"
     fi
-    echo -e "${CYAN}[i] Pre-quantized MaxQ v3.1.0 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
+    echo -e "${CYAN}[i] Pre-quantized MaxQ v3.1.1 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
     echo -e "    Run ${BOLD}./modchip setup${RESET} to download & verify any Aligned or Abliterated checkpoint."
     echo -e "    For standard GGUF quantization via llama-quantize, install all binaries with ${BOLD}./modchip download-bin --all-tools${RESET}."
 }
@@ -604,13 +604,13 @@ cmd_claude() {
     elif [[ "$raw_model" == *[Nn]emotron* ]]; then
         if [[ "$raw_model" == *[Aa]bliterated* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.0 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.1 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
         elif [[ "$raw_model" == *[Mm]ax[Qq]*16* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB"
             model_banner="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B-A3B Hybrid Mamba-2 · Standard ggml · RouteCrack 2.0 · CPU/Metal/CUDA)"
         elif [[ "$raw_model" == *[Vv][Qq]3* ]]; then
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64"
-            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.0 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
+            model_banner="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B-A3B Hybrid Mamba-2 · v3.1.1 VQ3-64 · RouteCrack 2.0 · 256K CPU)"
         else
             model_id="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64"
             model_banner="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B-A3B Hybrid Mamba-2 · 256K CPU)"
@@ -671,29 +671,29 @@ cmd_download_bin() {
     local flags=""
     [[ -r /proc/cpuinfo ]] && flags="$(grep -m1 -E '^flags' /proc/cpuinfo || true)"
     local isa_suffix="avx2"
-    local srv_sha256="32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee"
-    local cli_sha256="1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2"
-    local bnc_sha256="a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617"
-    local ppl_sha256="071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724"
-    local qnt_sha256="1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576"
+    local srv_sha256="e1b90dc9d289aa91a2802db2b2694695663ea862205ab999fb22424d49a3cc47"
+    local cli_sha256="dee9ef216ef9ce106738b4ac78dcee45b1330982bf98eefd02f9258b017f3bfa"
+    local bnc_sha256="068203c9fae5b7e4341b1f5f848d9fb633e8553c14315ebda987e8dbcfd76dd8"
+    local ppl_sha256="e76a9227572d494586fa62eaedac2ea02da467118877bcaf8b553dad8f9d5dde"
+    local qnt_sha256="8d3fde844ed36df5710266170542d403e0029cc14c1d9830cb1500785ad6e4ea"
     if echo "$flags" | grep -q "avx512f" && echo "$flags" | grep -qE "avx512_?vbmi" && echo "$flags" | grep -qE "avx512_?vnni"; then
         isa_suffix="avx512"
-        srv_sha256="6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6"
-        cli_sha256="882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a"
-        bnc_sha256="607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f"
-        ppl_sha256="a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53"
-        qnt_sha256="97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2"
+        srv_sha256="b216b71a2f6939ff9396465a7ba2e8d220473d7a27050da0b87abd4a7bc430a4"
+        cli_sha256="492b8084cf6cc11eea8317a07cb2f99b7323292036c108b02069a0bae81589ba"
+        bnc_sha256="1de967eea3fec56f970dcffd9fa9d4153b7039ace3f882b024f425b747371c09"
+        ppl_sha256="3efc000b4d07af4a09bd5b5f05f7fc76e7b8737e67a6ea513fe5cacedfd7ffc0"
+        qnt_sha256="023f9d2074585f2833d12e842ca8fa985025792b3751d69692d8b69ad399bfad"
     elif ! echo "$flags" | grep -q "avx2"; then
         echo -e "${YELLOW}[!] CPU lacks AVX2; run './modchip setup --source' to compile scalar/AVX1 fallback from source.${RESET}"
         exit 1
     fi
     local srv_asset="llama-server-modchip-linux-x86_64-${isa_suffix}"
     local cli_asset="llama-cli-modchip-linux-x86_64-${isa_suffix}"
-    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.1.0"
+    local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.1.1"
     local fallback_url="https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main"
     local tools_msg="${srv_asset} & ${cli_asset}"
     [[ "$all_tools" == "1" ]] && tools_msg="${srv_asset}, ${cli_asset}, llama-bench, llama-perplexity & llama-quantize"
-    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.1.0 ${tools_msg} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
+    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.1.1 ${tools_msg} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
     curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${base_url}/${srv_asset}" \
         || curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${fallback_url}/${srv_asset}"
     local actual_srv_sha
@@ -748,7 +748,7 @@ cmd_download_bin() {
             exit 1
         fi
     done
-    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.1.0 SHA-256 + --version OK)${RESET}"
+    echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.1.1 SHA-256 + --version OK)${RESET}"
     if [[ "$all_tools" == "1" ]]; then
         echo -e "${GREEN}[✓] Companion tools ready in ${dest_dir}: llama-cli, llama-bench, llama-perplexity, llama-quantize${RESET}"
     else
@@ -757,7 +757,7 @@ cmd_download_bin() {
 }
 
 cmd_checksums() {
-    echo -e "${BOLD}Pinned llama-modchip v3.1.0 Fleet GGUF & Binary SHA-256 Checksums:${RESET}"
+    echo -e "${BOLD}Pinned llama-modchip v3.1.1 Fleet GGUF & Binary SHA-256 Checksums:${RESET}"
     echo "# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ"
     printf '%s  %s\n' "$QWEN38_64GB_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf (46,449,692,736 B · qwen38-64gb)"
     printf '%s  %s\n' "$QWEN38_64GB_ABLIT_SHARD1_SHA256" "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf (46,449,692,736 B · qwen38-64gb-ablit)"
@@ -774,19 +774,19 @@ cmd_checksums() {
     printf '%s  %s\n' "$NEMOTRON_VQ3_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · nemotron-vq3 · types 44/45)"
     printf '%s  %s\n' "$NEMOTRON_FRACTAL_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · nemotron-fractal · type 44)"
     printf '%s  %s\n' "$NEMOTRON_ABLIT_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · nemotron-ablit · types 44/45)"
-    echo "# Portable llama-modchip v3.1.0 Linux x86_64 Binaries, Tarball & Patch (GLIBC <= 2.30)"
+    echo "# Portable llama-modchip v3.1.1 Linux x86_64 Binaries, Tarball & Patch (GLIBC <= 2.30)"
     printf '%s  %s\n' "abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2" "patches/llama-modchip-v3.1.patch"
-    printf '%s  %s\n' "6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6" "llama-server-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee" "llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)"
-    printf '%s  %s\n' "882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a" "llama-cli-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2" "llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)"
-    printf '%s  %s\n' "607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f" "llama-bench-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617" "llama-bench-modchip-linux-x86_64-avx2"
-    printf '%s  %s\n' "a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53" "llama-perplexity-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724" "llama-perplexity-modchip-linux-x86_64-avx2"
-    printf '%s  %s\n' "97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2" "llama-quantize-modchip-linux-x86_64-avx512"
-    printf '%s  %s\n' "1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576" "llama-quantize-modchip-linux-x86_64-avx2"
-    printf '%s  %s\n' "258c85d4d9a4b4953fb82fbfa18cb0e3dd867b00ccff74e04d9867376c4ea60b" "llama-modchip-v3.1.0-linux-x86_64.tar.gz"
+    printf '%s  %s\n' "b216b71a2f6939ff9396465a7ba2e8d220473d7a27050da0b87abd4a7bc430a4" "llama-server-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "e1b90dc9d289aa91a2802db2b2694695663ea862205ab999fb22424d49a3cc47" "llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)"
+    printf '%s  %s\n' "492b8084cf6cc11eea8317a07cb2f99b7323292036c108b02069a0bae81589ba" "llama-cli-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "dee9ef216ef9ce106738b4ac78dcee45b1330982bf98eefd02f9258b017f3bfa" "llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)"
+    printf '%s  %s\n' "1de967eea3fec56f970dcffd9fa9d4153b7039ace3f882b024f425b747371c09" "llama-bench-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "068203c9fae5b7e4341b1f5f848d9fb633e8553c14315ebda987e8dbcfd76dd8" "llama-bench-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "3efc000b4d07af4a09bd5b5f05f7fc76e7b8737e67a6ea513fe5cacedfd7ffc0" "llama-perplexity-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "e76a9227572d494586fa62eaedac2ea02da467118877bcaf8b553dad8f9d5dde" "llama-perplexity-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "023f9d2074585f2833d12e842ca8fa985025792b3751d69692d8b69ad399bfad" "llama-quantize-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "8d3fde844ed36df5710266170542d403e0029cc14c1d9830cb1500785ad6e4ea" "llama-quantize-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "956a8b734892cdc001e8fe677d4c180b58d94f2af4951798ec5e66b58eadaebd" "llama-modchip-v3.1.1-linux-x86_64.tar.gz"
 }
 
 cmd_tui() {

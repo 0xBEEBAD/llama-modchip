@@ -1,6 +1,42 @@
-# Release Notes — `llama-modchip` (`v3.1.0`)
+# Release Notes — `llama-modchip` (`v3.1.1`)
 
 > **Quick Links:** [Overview (`README.md`)](README.md) · [LUT-VQ3-64 & MaxQ-v4 Quality Gate (`benchmarks/QUALITY_GATE_VQ3_64.md`)](benchmarks/QUALITY_GATE_VQ3_64.md) · [Technical Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md) · [Windows Port & Hybrid Pack (`windows/README.md`)](windows/README.md) · [Fractal-MoE Quality Gate (`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`)](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) · [`RouteCrack 2.0` Techniques (`speculative/ROUTECRACK_TECHNIQUES.md`)](speculative/ROUTECRACK_TECHNIQUES.md) · [Engineering FAQ (`FAQ.md`)](FAQ.md)
+
+---
+
+## `v3.1.1` — Verified Aligned `Qwen3.8-MaxQ-64GB` Benchmarks (`15.34 avg / 21.38 peak tok/s`), Cross-ISA Bit-Identical SIMD `NaN`/`±Inf` Hardening, `v3.1.1` Technical Paper & 12-Gate Release Preflight
+
+**Release Date:** November 2026  
+**Highlights:**
+1. **Cross-ISA Bit-Identical SIMD Feature Sanitization (`speculative/cpp/rc_arbiter_l1.h`, [`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch), `speculative/cpp/test_routecrack2.cpp`)**:
+   - Added `sanitize_feature()` (`std::isfinite(v) ? v : 0.0f`) over a stack-local sanitized copy of the 16 input feature lanes prior to SIMD dot products in `rc2_l1::predict_accept_prob()` while preserving `sizeof(RC2L1ArbiterWeights) == 832 B` (`13` cache lines).
+   - Eliminates `NaN` / `+Inf` / `-Inf` lane divergence between `AVX-512F`, `AVX2+FMA`, `ARM64 NEON`, and scalar fallbacks — empirically verified bit-identical across all three x86-64 ISAs under `-fsanitize=address,undefined` in `speculative/cpp/test_routecrack2.cpp`.
+   - Rebuilt all **12 portable static-`libgomp` `GLIBC <= 2.30` Linux `x86_64` binaries** (`llama-server`, `llama-cli`, `llama-bench`, `llama-perplexity`, `llama-quantize` × `-avx512`/`-avx2` + generic `-avx2` aliases) from `llama.cpp @ de32b268c` (`b12416`) + `patches/llama-modchip-v3.1.patch` (`SHA256 = abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2`), verified `max_glibc <= 2.30`, `0` dynamic `libgomp`/`libstdc++`, `0` `%zmm` in `-avx2`, and `0` `vdpbf16ps` in `-avx512`.
+2. **Verified Aligned `Qwen3.8-Flash-Next-MaxQ-64GB` `RouteCrack 2.0` Benchmarks ([`benchmarks/results/qwen38_routecrack2_v31.json`](benchmarks/results/qwen38_routecrack2_v31.json))**:
+   - Re-benchmarked the flagship **Aligned** `Qwen3.8-Flash-Next-MaxQ-64GB` checkpoint (`176.5B` / `5B` Active, `blk.48` MTP, `72.77 GiB` available RAM, 16 Zen 5 cores, `0 GPU`, `T = 0`, `256` tok/wl):
+     - `Pure N=1` (`none`): **`8.67 tok/s`** (`W1 = 8.50, W2 = 8.68, W3 = 8.68, W4 = 8.68`)
+     - `MTP-1` (`draft-mtp --draft-max 1`): **`12.00 tok/s`** (`89.57%` acc `481/537`, `mean_len = 1.90`; `W1 = 12.25, W2 = 12.57, W3 = 11.89, W4 = 11.20`)
+     - `v3.0 Release` (`draft-mtp`, `n_max = 3`): **`13.94 tok/s`** (`+60.8%` vs `N=1`, `73.79%` acc `701/950`, `mean_len = 3.33`; `W1 = 16.61, W2 = 16.84, W3 = 13.24, W4 = 10.76`)
+     - **`RouteCrack 2.0` (`routecrack2`)**: **`15.34 tok/s`** (**`+77.02%` / `1.77×` vs `N=1`, `+27.86%` vs `MTP-1`, `+10.06%` vs `v3.0`**: **`W1 = 21.38`** [`2.52×` vs `N=1`], **`W2 = 17.38`**, **`W3 = 12.63`**, **`W4 = 12.78 tok/s`** [`+18.8%` vs `v3.0`]; **`79.95%` accept** `702/878`, **`mean_len = 3.66`**; `100%` greedy bit-exact on structured `W1+W2` [`254/254`], with standard batched FP32 GEMM/GEMV reduction tie-breaks on `W3+W4` matching `MTP-1` and `v3.0 draft-mtp`).
+   - Reconciled all active documentation, `release_manifest.json`, `scripts/check_cpu_readiness.py`, and the modernized `v3.1.1` technical paper (`paper/llama-modchip-paper.pdf` + 3 crisp vector PDF figures + `paper/arxiv-submission.tar.gz`) directly to this Aligned JSON; preserved `DeepSeek-V4 MaxQ-v4` (`7.79 avg / 12.31 peak tok/s`, `85.92%` accept) and `Nemotron-3.5 30B` (`28.20 avg / 42.18 peak tok/s`, `78.59%` accept) parity.
+3. **Engineering Hardening, ABI Inspector Fix, Dual-Track Hygiene & 12-Gate Automated Release Preflight**:
+   - Fixed `scripts/gguf_tensor_type.py` enum `43` (`"f8_e4m3"`, matching `GGML_TYPE_F8_E4M3 = 43`), hardened per-UID `/dev/shm` Slot-0 snapshot paths (`0600` + `O_NOFOLLOW`) in `gateway/sse_gateway.py` and `kv_cache/harp_cache.py`, pinned all Hugging Face `MODEL_REV` commits to 40-hex SHAs in `install.sh`, and isolated opt-in research `*-ablit` preset docs cleanly inside a collapsible block in `README.md` (all presets remain 100% functional).
+   - Added canonical [`release_manifest.json`](release_manifest.json), [`docs/RELEASE_PROCEDURE.md`](docs/RELEASE_PROCEDURE.md), and the **12-Gate Automated Release Preflight (`scripts/preflight_release_check.py`)** verifying version/build parity, ABI enums, `rc_*.h` byte-identity inside the patch, SHA-256 parity across `install.sh`/`modchip`/docs, benchmark JSON reconciliation (`W1..W4`, accept %, mean len), compiled PDF/arXiv tarball parity, multi-ISA C++ ASan/UBSan tests, OPSEC hygiene, and live dual-mirror GitHub Release + Hugging Face `SHA256SUMS` & LFS digest checks.
+   - Added community `RouteCrack 2.0` leaderboard milestones: **`@jbeckman1974`** ([Issue #8](https://github.com/synchopate/llama-modchip/issues/8), Apple M4 Max 64 GB Metal: `249.76 tok/s` Stage 1 [`97.6%` accept] / `236.30 tok/s` Stage 2 [`90.3%` accept, `23 ms` TTFT] on `Nemotron-3.5-30B-Q4_0`) and **`@Joesepf`** ([Issue #50](https://github.com/synchopate/llama-modchip/issues/50), AMD Ryzen 7 5700U 15 GB RAM `0 GPU`: `14.79 tok/s` Stage 2 [`90.5%` accept, `14.25 tok/s` Stage 1, `13.03 GiB` peak RSS] on `Qwen3.6-35B-A3B-UD-Q2_K_XL`).
+   - **Zero GGUF checkpoint changes** — all `v3.0` GGUF SHA-256s remain 100% identical.
+4. **12 Rebuilt Static-`libgomp` Portable `GLIBC_2.30` Linux `x86_64` Binaries, Tarball & Patch (`v3.1.1` `SHA256SUMS`)**:
+   - `abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2  llama-modchip-v3.1.patch`
+   - `b216b71a2f6939ff9396465a7ba2e8d220473d7a27050da0b87abd4a7bc430a4  llama-server-modchip-linux-x86_64-avx512`
+   - `e1b90dc9d289aa91a2802db2b2694695663ea862205ab999fb22424d49a3cc47  llama-server-modchip-linux-x86_64-avx2` *(and `llama-server-modchip-linux-x86_64`)*
+   - `492b8084cf6cc11eea8317a07cb2f99b7323292036c108b02069a0bae81589ba  llama-cli-modchip-linux-x86_64-avx512`
+   - `dee9ef216ef9ce106738b4ac78dcee45b1330982bf98eefd02f9258b017f3bfa  llama-cli-modchip-linux-x86_64-avx2` *(and `llama-cli-modchip-linux-x86_64`)*
+   - `1de967eea3fec56f970dcffd9fa9d4153b7039ace3f882b024f425b747371c09  llama-bench-modchip-linux-x86_64-avx512`
+   - `068203c9fae5b7e4341b1f5f848d9fb633e8553c14315ebda987e8dbcfd76dd8  llama-bench-modchip-linux-x86_64-avx2`
+   - `3efc000b4d07af4a09bd5b5f05f7fc76e7b8737e67a6ea513fe5cacedfd7ffc0  llama-perplexity-modchip-linux-x86_64-avx512`
+   - `e76a9227572d494586fa62eaedac2ea02da467118877bcaf8b553dad8f9d5dde  llama-perplexity-modchip-linux-x86_64-avx2`
+   - `023f9d2074585f2833d12e842ca8fa985025792b3751d69692d8b69ad399bfad  llama-quantize-modchip-linux-x86_64-avx512`
+   - `8d3fde844ed36df5710266170542d403e0029cc14c1d9830cb1500785ad6e4ea  llama-quantize-modchip-linux-x86_64-avx2`
+   - `956a8b734892cdc001e8fe677d4c180b58d94f2af4951798ec5e66b58eadaebd  llama-modchip-v3.1.1-linux-x86_64.tar.gz`
 
 ---
 

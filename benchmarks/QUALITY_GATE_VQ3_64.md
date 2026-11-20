@@ -1,6 +1,6 @@
-# `llama-modchip v3.1.0` 3-Tier Quality, Signal Precision & `RouteCrack 2.0` Parity Gate
+# `llama-modchip v3.1.1` 3-Tier Quality, Signal Precision & `RouteCrack 2.0` Parity Gate
 
-- **Release:** `v3.1.0` (Zero-Collision `ggml` ABI `41..45` · Unified `patches/llama-modchip-v3.1.patch` on `llama.cpp @ de32b268c` / `b12416`)
+- **Release:** `v3.1.1` (Zero-Collision `ggml` ABI `41..45` · Unified `patches/llama-modchip-v3.1.patch` on `llama.cpp @ de32b268c` / `b12416`)
 - **Target Flagship Fleet:**
   - **64 GB & 32 GB Tiers — `Qwen3.8-Flash-Next`** (`176.5B` total / `5B` active, `48` blocks: `36` Gated DeltaNet + `12` QSA + `512` routed experts + `320M`-row PLE + `blk.48` NextN MTP)
   - **64 GB Tier (`284B`) — `DeepSeek-V4-Flash-0731-MaxQ-v4`** (`284.33B` total / `13.17B` active, `43` MLA + `256+1s` MoE layers, unpruned `Top-6`, 100% donor-free standard `ggml`)
@@ -14,9 +14,9 @@
 
 ---
 
-## 1. Zero-Collision `v3.1.0` `ggml` ABI & Format Signal Fidelity
+## 1. Zero-Collision `v3.1.1` `ggml` ABI & Format Signal Fidelity
 
-`llama-modchip v3.1.0` preserves all upstream `ggml` tensor types (`0..43`) untouched and places custom block-64 CPU/Metal quantization formats at dedicated zero-collision slots `44` and `45`:
+`llama-modchip v3.1.1` preserves all upstream `ggml` tensor types (`0..43`) untouched and places custom block-64 CPU/Metal quantization formats at dedicated zero-collision slots `44` and `45`:
 
 | `ggml` Enum ID | Symbol (`ggml.h`) | Effective `bpw` | Bytes / 64 W | Direct `BF16` SQNR | Cosine Sim vs. `BF16` | Backends |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -48,13 +48,13 @@ Evaluated on `40 × 512` blind `wiki-alt.txt` chunks (`0.000000%` 8-gram and 13-
 
 ---
 
-## 3. `RouteCrack 2.0` (`v3.1.0`) Throughput & Lossless Target Verification Parity
+## 3. `RouteCrack 2.0` (`v3.1.1`) Throughput & Lossless Target Verification Parity
 
 Verified across all three flagship families (`T = 0`, 16 Zen 5 cores, `0 GPU`, raw JSON logs in `benchmarks/results/*_routecrack2_v31.json`):
 
-| Flagship Checkpoint | Pure `N=1` (`none`) | `v3.0` Default | **`RouteCrack 2.0` (`v3.1.0`)** | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Accept (`Mean Len`) | Greedy Exact Parity |
+| Flagship Checkpoint | Pure `N=1` (`none`) | `v3.0` Default | **`RouteCrack 2.0` (`v3.1.1`)** | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Accept (`Mean Len`) | Greedy Exact Parity |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`Qwen3.8-MaxQ-64GB-Abliterated`** ([`JSON`](results/qwen38_routecrack2_v31.json)) | `8.78 t/s` (`8.58/8.76/8.84/8.82`) | `13.87 t/s` (`draft-mtp`: `16.77/17.13/12.72/10.77`) | **`15.88 tok/s`** (`+80.8%` vs `N=1`, `+14.5%` vs `v3.0`) | **`21.98` / `17.85` / `12.98` / `13.47`** | **`82.40%`** (`3.71`) | `100%` exact `W1+W2` (`254/254`); lossless target argmax `W3+W4` |
+| **`Qwen3.8-Flash-Next-MaxQ-64GB`** ([`JSON`](results/qwen38_routecrack2_v31.json)) | `8.67 t/s` (`8.50/8.68/8.68/8.68`) | `13.94 t/s` (`draft-mtp`: `16.61/16.84/13.24/10.76`) | **`15.34 tok/s`** (`+77.0%` vs `N=1`, `+10.1%` vs `v3.0`) | **`21.38` / `17.38` / `12.63` / `12.78`** | **`79.95%`** (`3.66`) | `100%` exact `W1+W2` (`254/254`); lossless target argmax `W3+W4` |
 | **`DeepSeek-V4-Flash MaxQ-v4`** ([`JSON`](results/dsv4_routecrack2_v31.json)) | `6.80 t/s` (`6.48/6.70/6.90/7.01`) | `7.73 t/s` (`ngram-map-k`: `11.90/7.39/6.74/6.55`) | **`7.79 tok/s`** (`+14.5%` vs `N=1`, `+0.84%` vs `v3.0`) | **`12.31` / `7.55` / `6.74` / `6.49`** | **`85.92%`** (`2.97`) | `100%` exact `W1+W2` (mode refutation fixes `v3.0` `W2` divergence) |
 | **`Nemotron-3.5-30B (Fractal-MXFP4)`** ([`JSON`](results/nemotron_routecrack2_v31.json)) | `22.60 t/s` (`22.20/22.57/22.69/22.61`) | `27.13 t/s` (`ngram-map-k`: `42.54/26.08/22.65/23.80`) | **`28.20 tok/s`** (`+24.8%` vs `N=1`, `+3.96%` vs `v3.0`) | **`42.18` / `28.83` / `22.97` / `24.72`** | **`78.59%`** (`3.35`) | `100%` exact `W1+W2` (`+10.5%` `W2`, fixes `v3.0` divergence) |
 
@@ -98,15 +98,15 @@ Built 100% donor-free from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe2
 
 ---
 
-## 6. Reproducibility Commands (`v3.1.0`)
+## 6. Reproducibility Commands (`v3.1.1`)
 
 ```bash
-# 1. Build unified llama-modchip v3.1.0 engine with quantizer & backend kernel tests
+# 1. Build unified llama-modchip v3.1.1 engine with quantizer & backend kernel tests
 BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
 ./workspace/llama.cpp/build/bin/test-quantize-fns
 ./workspace/llama.cpp/build/bin/test-backend-ops test -b CPU
 
-# 2. Or download all prebuilt v3.1.0 Linux x86_64 binaries (including llama-perplexity & llama-bench)
+# 2. Or download all prebuilt v3.1.1 Linux x86_64 binaries (including llama-perplexity & llama-bench)
 ./modchip download-bin --all-tools
 
 # 3. Download & SHA-256 verify any 3-Tier checkpoint from Hugging Face

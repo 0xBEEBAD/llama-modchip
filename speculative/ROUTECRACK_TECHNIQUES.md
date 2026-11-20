@@ -21,13 +21,13 @@ Starting in **`llama-modchip v3.1.0`**, **`RouteCrack 2.0`** ([`speculative/cpp/
      - `kRC2DraftlessArbiter`: Fast/medium non-MTP Mamba-2+MoE models (`NVIDIA-Nemotron-3.5-30B-A3B` `16GB`)
      - `kRC2HeavyMoEDraftlessArbiter`: Bandwidth-bound `> 35 GiB` 256-expert MoE models (`DeepSeek-V4-Flash-0731` `284B`)
 
-### Verified `v3.1.0` Head-to-Head Results Across All 3 Flagship Families (16C Zen 5, `0 GPU`, `T = 0`)
+### Verified `v3.1.1` Head-to-Head Results Across All 3 Flagship Families (16C Zen 5, `0 GPU`, `T = 0`)
 
 Raw JSON transcripts: [`qwen38_routecrack2_v31.json`](../benchmarks/results/qwen38_routecrack2_v31.json), [`dsv4_routecrack2_v31.json`](../benchmarks/results/dsv4_routecrack2_v31.json), [`nemotron_routecrack2_v31.json`](../benchmarks/results/nemotron_routecrack2_v31.json).
 
-| Model Family | Pure `N=1` (`none`) | `v3.0` Default | **`RouteCrack 2.0` (`v3.1.0`)** | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Accept (`Mean Len`) |
+| Model Family | Pure `N=1` (`none`) | `v3.0` Default | **`RouteCrack 2.0` (`v3.1.1`)** | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Accept (`Mean Len`) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **`Qwen3.8-MaxQ-64GB-Abliterated`** (`176.5B`, MTP) | `8.78 t/s` (`8.58/8.76/8.84/8.82`) | `13.87 t/s` (`draft-mtp`: `16.77/17.13/12.72/10.77`) | **`15.88 tok/s`** (`+80.8%` vs `N=1`, `+14.5%` vs `v3.0`) | **`21.98` / `17.85` / `12.98` / `13.47`** | **`82.40%`** (`3.71`) |
+| **`Qwen3.8-Flash-Next-MaxQ-64GB`** (`176.5B`, MTP) | `8.67 t/s` (`8.50/8.68/8.68/8.68`) | `13.94 t/s` (`draft-mtp`: `16.61/16.84/13.24/10.76`) | **`15.34 tok/s`** (`+77.0%` vs `N=1`, `+10.1%` vs `v3.0`) | **`21.38` / `17.38` / `12.63` / `12.78`** | **`79.95%`** (`3.66`) |
 | **`DeepSeek-V4-Flash MaxQ-v4`** (`284.3B`, Heavy-MoE) | `6.80 t/s` (`6.48/6.70/6.90/7.01`) | `7.73 t/s` (`ngram-map-k`: `11.90/7.39/6.74/6.55`) | **`7.79 tok/s`** (`+14.5%` vs `N=1`, `+0.84%` vs `v3.0`) | **`12.31` / `7.55` / `6.74` / `6.49`** | **`85.92%`** (`2.97`) |
 | **`Nemotron-3.5-30B (Fractal-MXFP4)`** (`30B`, Mamba-2) | `22.60 t/s` (`22.20/22.57/22.69/22.61`) | `27.13 t/s` (`ngram-map-k`: `42.54/26.08/22.65/23.80`) | **`28.20 tok/s`** (`+24.8%` vs `N=1`, `+3.96%` vs `v3.0`) | **`42.18` / `28.83` / `22.97` / `24.72`** | **`78.59%`** (`3.35`) |
 

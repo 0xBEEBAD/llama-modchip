@@ -15,9 +15,9 @@
 
 ---
 
-## 2. Operator-by-Operator Profiling & `v3.1.0` `RouteCrack 2.0` Results (16C/32T Zen 5)
+## 2. Operator-by-Operator Profiling & `v3.1.1` `RouteCrack 2.0` Results (16C/32T Zen 5)
 
-### A. `v3.1.0` `RouteCrack 2.0` (`kRC2HeavyMoEDraftlessArbiter`) on `DeepSeek-V4-Flash-0731-MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`)
+### A. `v3.1.1` `RouteCrack 2.0` (`kRC2HeavyMoEDraftlessArbiter`) on `DeepSeek-V4-Flash-0731-MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`)
 
 Evaluated head-to-head on 16 Zen 5 cores (`0 GPU`, `T = 0`, `192` tok/wl, unpruned `Top-6`; raw JSON in [`benchmarks/results/dsv4_routecrack2_v31.json`](../benchmarks/results/dsv4_routecrack2_v31.json)):
 
@@ -25,13 +25,13 @@ Evaluated head-to-head on 16 Zen 5 cores (`0 GPU`, `T = 0`, `192` tok/wl, unprun
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Pure `N=1` (`--spec-type none`) | `6.48` | `6.70` | `6.90` | `7.01` | `6.80 tok/s` | `0.0%` (`1.00`) | `58.71 GiB` |
 | `v3.0` (`--spec-type ngram-map-k`) | `11.90` | `7.39` | `6.74` | `6.55` | `7.73 tok/s` | `85.49%` (`2.42`) | `59.11 GiB` |
-| **`v3.1.0` `RouteCrack 2.0` (`routecrack2`)** | **`12.31`** (`+90.0%`, exact) | **`7.55`** (`+12.7%`, exact) | `6.74` | `6.49` | **`7.79 tok/s`** (`+14.5%`) | **`85.92%`** (`2.97`) | `59.11 GiB` |
+| **`v3.1.1` `RouteCrack 2.0` (`routecrack2`)** | **`12.31`** (`+90.0%`, exact) | **`7.55`** (`+12.7%`, exact) | `6.74` | `6.49` | **`7.79 tok/s`** (`+14.5%`) | **`85.92%`** (`2.97`) | `59.11 GiB` |
 
 ### B. Operator-by-Operator Single-Token Decode Evolution (`N=1`, `4,551` Graph Nodes)
 
 Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` ([`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch)) on an **AMD Ryzen 9 9955HX (`16C/32T Zen 5`, `0 GPUs`)**:
 
-| Operator / Subsystem (`43` Layers) | Tensor Types | Calls / Tok | `v2.3.0` Initial (`169.3 ms`) | Pre-Micro-Opt (`121.9 ms`) | **`v3.1.0` Unpruned `Top-6` (`110.3 ms`)** | **`v3.1.0` `Top-4 L2` (`98.8 ms`)** | What Was Optimized |
+| Operator / Subsystem (`43` Layers) | Tensor Types | Calls / Tok | `v2.3.0` Initial (`169.3 ms`) | Pre-Micro-Opt (`121.9 ms`) | **`v3.1.1` Unpruned `Top-6` (`110.3 ms`)** | **`v3.1.1` `Top-4 L2` (`98.8 ms`)** | What Was Optimized |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | **1. MLA & Shared Expert `MUL_MAT`** (`wq_b`, `wo_a`, `wo_b`, `wkv`, `shexp`) | `Q4_K`/`Q6_K`/`FRACTAL_64` | `512` | `78.40 ms` | `62.20 ms` | **`61.81 ms`** | **`61.81 ms`** | AVX-512 `vprorvq` / `vpermi2b`, 3D L1D tiling (`wo_a`), 8-slot `Q8_0` cache, barrier elision (`nr0 < 4096`) |
 | **2. Routed MoE `MUL_MAT_ID`** (`up_exps`, `gate_exps`, `down_exps` — Bulk) | `iq1_s` (`SwiGLU-H2`) | `87` | `25.10 ms` | `22.79 ms` | **`22.27 ms`** | **`15.17 ms`** *(`-33.4%`)* | 8-slot `Q8_K` cache, `MUL_MAT_ID` row-group reuse, `ones256` AVX2 hoist, $L_2$-quadrature tail pruning |

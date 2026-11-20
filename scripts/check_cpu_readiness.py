@@ -985,10 +985,10 @@ def evaluate_qwen38_readiness(cpu, mem, rep_30b):
     core_mlp = min(1.0, 0.70 + 0.02 * max(cpu["physical_cores"], 1))
     scale = max(0.20, min(4.5, bw_ratio * core_mlp * isa_mult))
 
-    # Calibrated to 16C Zen 5 v3.1.0 JSON (8.78 N=1, 15.88 avg / 21.98 peak RouteCrack 2.0, 72.0 pp512)
-    est_n1 = round(8.78 * scale, 2)
-    est_rc2_avg = round(15.88 * scale, 2)
-    est_rc2_peak = round(21.98 * scale, 2)
+    # Calibrated to 16C Zen 5 v3.1.1 Aligned JSON (8.67 N=1, 15.34 avg / 21.38 peak RouteCrack 2.0, 72.0 pp512)
+    est_n1 = round(8.67 * scale, 2)
+    est_rc2_avg = round(15.34 * scale, 2)
+    est_rc2_peak = round(21.38 * scale, 2)
     est_pp512 = round(72.0 * min(max(cpu["physical_cores"], 1) / 16.0, 4.0) ** 0.82 * isa_mult, 1)
 
     if ram_total >= 58.0 and ram_avail >= 46.5:
