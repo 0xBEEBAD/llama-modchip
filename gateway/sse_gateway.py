@@ -163,10 +163,35 @@ _slot0_restore_lock = threading.Lock()
 _last_endpoint_was_chat = True
 SLOT0_SNAPSHOT_NAME = os.environ.get("LLAMA_SLOT_SNAPSHOT_NAME", "claude_40tools_slot0.bin")
 
+def _copy_file_secure_0600(src_path: str, dst_path: str) -> None:
+    """Copies src_path -> dst_path safely without following symlinks and enforcing mode 0600 + UID ownership."""
+    import stat as _stat
+    open_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(dst_path, open_flags, 0o600)
+    try:
+        st = os.fstat(fd)
+        if not _stat.S_ISREG(st.st_mode) or st.st_uid != _EUID:
+            raise PermissionError(f"Unsafe SHM snapshot target: {dst_path}")
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as out_f:
+            fd = -1
+            with open(src_path, "rb") as in_f:
+                shutil.copyfileobj(in_f, out_f, length=1 << 20)
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
 def _ensure_slot0_restored(target_upstream: str) -> None:
-    """Auto-restores the Slot 0 snapshot (22.2K tokens for Nemotron or 2.94K compact tokens for DeepSeek-V4) in ~19-32 ms if Slot 0 is cold or was evicted."""
+    """Auto-restores the per-UID Slot 0 snapshot (22.2K tokens for Nemotron or 2.94K compact tokens for DeepSeek-V4) in ~19-32 ms if Slot 0 is cold or was evicted."""
     ws_dir = _resolve_workspace_dir()
-    shm_snap = f"/dev/shm/{SLOT0_SNAPSHOT_NAME}"
+    base_name, base_ext = os.path.splitext(SLOT0_SNAPSHOT_NAME)
+    uid_snap_name = f"{base_name}_{_EUID}{base_ext}"
+    shm_snap = f"/dev/shm/{uid_snap_name}"
+    restore_filename = uid_snap_name
     custom_cache_dir = os.environ.get("MODCHIP_CACHE_DIR", "")
     if not os.path.exists(shm_snap):
         for disk_cand in (
@@ -176,16 +201,17 @@ def _ensure_slot0_restored(target_upstream: str) -> None:
         ):
             if disk_cand and os.path.exists(disk_cand):
                 try:
-                    shutil.copyfile(disk_cand, shm_snap)
+                    _copy_file_secure_0600(disk_cand, shm_snap)
                     if os.path.exists(disk_cand + ".ckpt") and not os.path.exists(shm_snap + ".ckpt"):
-                        shutil.copyfile(disk_cand + ".ckpt", shm_snap + ".ckpt")
-                    print(f"[Gateway] [Slot0-Guard] Copied {disk_cand} -> {shm_snap}", flush=True)
+                        _copy_file_secure_0600(disk_cand + ".ckpt", shm_snap + ".ckpt")
+                    print(f"[Gateway] [Slot0-Guard] Copied {disk_cand} -> {shm_snap} (mode 0600)", flush=True)
                 except Exception:
                     pass
                 break
 
     if not os.path.exists(shm_snap) and custom_cache_dir and os.path.exists(os.path.join(custom_cache_dir, SLOT0_SNAPSHOT_NAME)):
         shm_snap = os.path.join(custom_cache_dir, SLOT0_SNAPSHOT_NAME)
+        restore_filename = SLOT0_SNAPSHOT_NAME
 
     if not os.path.exists(shm_snap):
         return
@@ -207,7 +233,7 @@ def _ensure_slot0_restored(target_upstream: str) -> None:
             t0 = time.perf_counter()
             restore_req = urllib.request.Request(
                 f"{target_upstream}/slots/0?action=restore",
-                data=json.dumps({"filename": SLOT0_SNAPSHOT_NAME}).encode("utf-8"),
+                data=json.dumps({"filename": restore_filename}).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )

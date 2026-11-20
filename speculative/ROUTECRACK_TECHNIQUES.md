@@ -16,7 +16,7 @@ Starting in **`llama-modchip v3.1.0`**, **`RouteCrack 2.0`** ([`speculative/cpp/
 3. **Method 3 — `Stockfish-PVS` Multi-Order Zobrist TT (`tt6/tt5/tt4/tt3`) + 28-Bit Tagged Mode Refutation**:
    - Tracks live target-model verifications and refutations via 64-bit Zobrist keys (`tt6`, `tt5`, `tt4`, `tt3`) plus a collision-free 2KB 28-bit tagged token-mode refutation table (`tok_refute_table`), immediately halting raw `\n` suffix copies inside JSON string tool arguments while promoting verified MTP / Cascade Top-4 alternatives.
 4. **Hardware-Calibrated `RouteCrack 2.0 L1 Micro-Arbiter` (`rc_arbiter_l1.h`, `832 B` per profile)**:
-   - Evaluates 10 step features (`mtp_p1`, `mtp_margin`, `suffix_match_len`, `suffix_hit_count`, `zone_is_hot`, `sf_tt_wins`, `sf_tt_history`, `depth_d`, `recent_accept_ema`, `is_structural_tok`) inside `rc_arbiter_l1_predict()` and appends token `d` iff marginal expected `tokens / ms` strictly improves under three automatic hardware profiles:
+   - Evaluates 10 step features (`mtp_p1`, `mtp_margin`, `suffix_match_len`, `suffix_hit_count`, `zone_is_hot`, `sf_tt_wins`, `sf_tt_history`, `depth_d`, `recent_accept_ema`, `is_structural_tok`) inside `rc2_l1::predict_accept_prob()` and appends token `d` iff marginal expected `tokens / ms` strictly improves under three automatic hardware profiles:
      - `kRC2DefaultArbiter`: Native `NextN MTP` models (`Qwen3.8-Flash-Next` `64GB` & `32GB`)
      - `kRC2DraftlessArbiter`: Fast/medium non-MTP Mamba-2+MoE models (`NVIDIA-Nemotron-3.5-30B-A3B` `16GB`)
      - `kRC2HeavyMoEDraftlessArbiter`: Bandwidth-bound `> 35 GiB` 256-expert MoE models (`DeepSeek-V4-Flash-0731` `284B`)

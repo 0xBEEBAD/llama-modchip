@@ -34,7 +34,7 @@
    - AVX-512 / native: `g++ -std=c++17 -O2 -Wall -Wextra -Werror -march=native -fsanitize=address,undefined -Ispeculative/cpp speculative/cpp/test_routecrack2.cpp -o /tmp/test_rc2_avx512 && /tmp/test_rc2_avx512`
    - AVX2+FMA: `g++ -std=c++17 -O2 -Wall -Wextra -Werror -mavx2 -mfma -mno-avx512f -fsanitize=address,undefined -Ispeculative/cpp speculative/cpp/test_routecrack2.cpp -o /tmp/test_rc2_avx2 && /tmp/test_rc2_avx2`
    - Portable Scalar: `g++ -std=c++17 -O2 -Wall -Wextra -Werror -mno-avx512f -mno-avx2 -fsanitize=address,undefined -Ispeculative/cpp speculative/cpp/test_routecrack2.cpp -o /tmp/test_rc2_scalar && /tmp/test_rc2_scalar`
-   - Verify 100% IEEE-754 bit-identity across all ISAs (including adversarial `NaN`/`±Inf` features) and `sizeof(RC2L1ArbiterWeights) == 832`.
+   - Verify 100% IEEE-754 bit-identity across all ISAs on adversarial `NaN`/`±Inf` features (and `<= 1e-6` cross-ISA parity on general dense finite feature vectors) and `sizeof(RC2L1ArbiterWeights) == 832`.
 4. **Multi-ISA binary verification:**
    - Verify `avx512` binary selection requires `avx512f + avx512_vbmi + avx512_vnni` across `install.sh`, `modchip`, `scripts/check_cpu_readiness.py`, and `README.md`.
    - Verify `avx2` portable binaries contain zero AVX-512 (`zmm`) instructions.
@@ -84,7 +84,7 @@ python3 scripts/preflight_release_check.py --strict --run-cpp-tests
    ```bash
    python3 scripts/preflight_release_check.py --strict --verify-remote
    ```
-   Confirms HTTP `200` + exact matching `Content-Length` across **both** GitHub Release and HuggingFace mirror URLs for every dual-mirror binary, plus HTTP `200` on GitHub for release tarballs.
+   Confirms HTTP `200` + exact matching `Content-Length` across **both** GitHub Release and HuggingFace mirror URLs for every dual-mirror binary (plus HF LFS SHA-256 header parity when exposed), exact SHA-256 parity of remote `SHA256SUMS` and `llama-modchip-vX.Y.patch` against `release_manifest.json`, and HTTP `200` on GitHub for release tarballs.
 
 ---
 
@@ -93,7 +93,7 @@ python3 scripts/preflight_release_check.py --strict --run-cpp-tests
    - `./modchip download-bin --all-tools` -> SHA-256 verification passes for all downloaded tools
    - `./modchip checksums` -> matches `release_manifest.json`
    - `python3 scripts/check_cpu_readiness.py --no-bench` -> clean exit, accurate ISA (`avx512f + avx512_vbmi + avx512_vnni`) & preset tiers
-   - `python3 scripts/llama_modchip.py --dry-run` -> emits expected `--spec-type`, `-ub`, `--poll 0 --poll-batch 0`
+   - `python3 scripts/llama_modchip.py --model /path/to/model.gguf --print-cmd` -> emits expected `--spec-type`, `-ub`, `--poll 0 --poll-batch 0`
 2. Merge PR after GitHub Actions [`preflight.yml`](../.github/workflows/preflight.yml) is green.
 3. Tag & publish:
    ```bash

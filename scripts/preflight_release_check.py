@@ -48,12 +48,14 @@ DELETED_FILES_BLACKLIST = [
     "%TEMP%\\dsv4_moe_cfg.bin",
 ]
 
-# Public-safe structural OPSEC checks (catches private IPs, personal home dirs, storage mounts, and API tokens)
+# Public-safe structural OPSEC checks (catches private IPs, personal home dirs, storage/mnt paths, and API tokens)
 OPSEC_FORBIDDEN_PATTERNS: list[tuple[str, str]] = [
     (r"\b192\.168\.\d{1,3}\.\d{1,3}\b", "Private LAN IPv4 address (192.168.x.x)"),
     (r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "Private RFC1918 IPv4 address (10.x.x.x)"),
+    (r"\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b", "Private RFC1918 IPv4 address (172.16-31.x.x)"),
     (r"/(?:home|Users)/(?!user\b|youruser\b|ubuntu\b|runner\b|llama\b|dev\b|alice\b|bob\b)[a-zA-Z0-9._-]+/", "Personal user home directory path"),
     (r"/storage\d+tb\b", "Private local storage mount path"),
+    (r"/mnt/[a-zA-Z0-9._-]+/", "Private /mnt filesystem path"),
     (r"\bhf_[A-Za-z0-9]{20,}\b", "HuggingFace API token"),
     (r"\bghp_[A-Za-z0-9]{20,}\b", "GitHub personal access token"),
     (r"\bgithub_pat_[A-Za-z0-9_]{20,}\b", "GitHub fine-grained token"),
@@ -134,10 +136,12 @@ def check_version_and_build_parity(manifest: dict[str, Any], g: GateResult) -> N
         "scripts/build_zen5_llama.sh",
         "fedora/nemotron.sh",
         "apple-silicon/build-dsv4-engine.sh",
+        "windows/build_patched_engine.ps1",
     ]
     for rel in build_scripts:
         p = REPO_ROOT / rel
         if not p.exists():
+            g.fail(f"Missing required build script: {rel}")
             continue
         txt = p.read_text(encoding="utf-8", errors="replace")
         if commit[:9] not in txt:
@@ -204,7 +208,6 @@ def check_abi_enums(manifest: dict[str, Any], g: GateResult) -> None:
                 f"'{m.group(1)}', expected '{py_name}' ({spec['c_name']})"
             )
 
-    # Reject legacy colliding ABI claims in active (non-historical) docs
     banned_abi_patterns = [
         (r"GGML_TYPE_VQ3_0\s*=\s*43", "Retired enum GGML_TYPE_VQ3_0 = 43 (now GGML_TYPE_VQ3_64 = 45)"),
         (r"hijacks?\s+`?GGML_TYPE_Q2_0", "Outdated claim that Fractal-64 hijacks GGML_TYPE_Q2_0"),
@@ -267,8 +270,17 @@ def check_rc_header_sync(manifest: dict[str, Any], g: GateResult) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Gate 4: SHA-256 Parity & Pinned 40-Char HF MODEL_REV Check
+# Gate 4: SHA-256 Parity (install.sh, modchip download-bin & checksums, docs) & Pinned HF MODEL_REV
 # ---------------------------------------------------------------------------
+def _extract_bash_fn(script_txt: str, fn_name: str) -> str:
+    m = re.search(rf"^{re.escape(fn_name)}\(\)\s*\{{", script_txt, re.MULTILINE)
+    if not m:
+        return ""
+    rest = script_txt[m.start() :]
+    end_m = re.search(r"^\}\s*$", rest, re.MULTILINE)
+    return rest[: end_m.end()] if end_m else rest
+
+
 def check_hashes_and_pinned_revs(manifest: dict[str, Any], g: GateResult) -> None:
     install_sh = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
     modchip_sh = (REPO_ROOT / "modchip").read_text(encoding="utf-8")
@@ -286,10 +298,37 @@ def check_hashes_and_pinned_revs(manifest: dict[str, Any], g: GateResult) -> Non
     if re.search(r'if\s+\[\[\s*"\$MODEL_FAMILY"\s*==\s*"nemotron"\s*\]\]', install_sh):
         g.fail("install.sh: SHA-256 verification for existing files is gated only on MODEL_FAMILY == nemotron")
 
-    # 3. Manifest artifact hashes must appear consistently in RELEASE_NOTES.md, README.md, and modchip
+    artifacts = manifest.get("artifacts", {})
+    gh_only = manifest.get("github_only_artifacts", {})
+
+    # 3. Explicitly verify install.sh EXPECTED_BIN_SHA256 matches avx2 & avx512 server binaries
+    install_bin_shas = set(re.findall(r'EXPECTED_BIN_SHA256="([0-9a-f]{64})"', install_sh))
+    for srv_name in ("llama-server-modchip-linux-x86_64-avx2", "llama-server-modchip-linux-x86_64-avx512"):
+        exp = artifacts.get(srv_name)
+        if exp and exp not in install_bin_shas:
+            g.fail(f"install.sh: EXPECTED_BIN_SHA256 missing/mismatched for {srv_name} (expected {exp[:12]}...)")
+
+    # 4. Explicitly verify modchip cmd_download_bin() hashes (NOT just cmd_checksums!)
+    dl_fn = _extract_bash_fn(modchip_sh, "cmd_download_bin")
+    cs_fn = _extract_bash_fn(modchip_sh, "cmd_checksums")
+    if not dl_fn:
+        g.fail("modchip: could not locate cmd_download_bin() function")
+    else:
+        dl_shas = set(re.findall(r'(?:srv|cli|bnc|ppl|qnt)_sha256="([0-9a-f]{64})"', dl_fn))
+        for tool in ("llama-server", "llama-cli", "llama-bench", "llama-perplexity", "llama-quantize"):
+            for isa in ("avx2", "avx512"):
+                art = f"{tool}-modchip-linux-x86_64-{isa}"
+                exp = artifacts.get(art)
+                if exp and exp not in dl_shas:
+                    g.fail(f"modchip cmd_download_bin(): missing/mismatched SHA-256 for {art} (expected {exp[:12]}...)")
+
+    if not cs_fn:
+        g.fail("modchip: could not locate cmd_checksums() function")
+
+    # 5. Manifest artifact hashes must appear consistently in RELEASE_NOTES.md, README.md, and modchip cmd_checksums()
     all_artifacts = {}
-    all_artifacts.update(manifest.get("artifacts", {}))
-    all_artifacts.update(manifest.get("github_only_artifacts", {}))
+    all_artifacts.update(artifacts)
+    all_artifacts.update(gh_only)
     for artifact, expected_sha in all_artifacts.items():
         if not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
             g.fail(f"release_manifest.json: invalid SHA-256 for {artifact}: '{expected_sha}'")
@@ -298,12 +337,12 @@ def check_hashes_and_pinned_revs(manifest: dict[str, Any], g: GateResult) -> Non
             g.fail(f"RELEASE_NOTES.md: missing SHA-256 {expected_sha[:12]}... for {artifact}")
         if expected_sha not in readme_md:
             g.fail(f"README.md: missing SHA-256 {expected_sha[:12]}... for {artifact}")
-        if expected_sha not in modchip_sh:
-            g.fail(f"modchip: missing SHA-256 {expected_sha[:12]}... for {artifact} (sync cmd_checksums)")
+        if cs_fn and expected_sha not in cs_fn:
+            g.fail(f"modchip cmd_checksums(): missing SHA-256 {expected_sha[:12]}... for {artifact}")
 
 
 # ---------------------------------------------------------------------------
-# Gate 5: Benchmark JSON <-> Markdown Numeric Reconciliation
+# Gate 5: Benchmark JSON <-> Markdown Reconciliation (Aggregate + W1..W4 + Accept % + Mean Len)
 # ---------------------------------------------------------------------------
 def nested_get(data: dict[str, Any], dotted_key: str) -> Any:
     cur: Any = data
@@ -315,6 +354,12 @@ def nested_get(data: dict[str, Any], dotted_key: str) -> Any:
 
 
 def check_benchmarks_vs_docs(manifest: dict[str, Any], g: GateResult) -> None:
+    rc2_wkeys = (
+        "w1_claude_refactor",
+        "w2_claude_multitool_json",
+        "w3_greenfield_c99",
+        "w4_tech_prose_it_en",
+    )
     for entry in manifest.get("benchmarks", []):
         jp = REPO_ROOT / entry["json"]
         if not jp.exists():
@@ -326,6 +371,10 @@ def check_benchmarks_vs_docs(manifest: dict[str, Any], g: GateResult) -> None:
         mpath = str(raw.get("model_path") or "")
         if mpath.startswith("/") or "\\" in mpath:
             g.fail(f"{entry['json']}: 'model_path' contains raw filesystem path '{mpath}' (sanitize to filename)")
+
+        doc_texts = {doc_rel: (REPO_ROOT / doc_rel).read_text(encoding="utf-8") for doc_rel in entry.get("docs", [])}
+
+        # 1. Check explicit manifest key_metrics
         for key, expected_val in entry.get("key_metrics", {}).items():
             actual = nested_get(raw, key)
             if actual is None:
@@ -336,14 +385,37 @@ def check_benchmarks_vs_docs(manifest: dict[str, Any], g: GateResult) -> None:
                     f"{entry['json']}: key '{key}'={actual} differs from manifest {expected_val}"
                 )
             needle = f"{float(expected_val):.2f}"
-            for doc_rel in entry.get("docs", []):
-                doc_txt = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
+            for doc_rel, doc_txt in doc_texts.items():
                 if needle not in doc_txt:
                     g.fail(f"{doc_rel}: does not report {key}={needle} from {entry['json']}")
 
+        # 2. Check RouteCrack 2.0 per-workload W1..W4 tok/s, exact accept %, and mean_verified_len
+        rc2_cfg = nested_get(raw, "configs.config3_routecrack2")
+        if isinstance(rc2_cfg, dict):
+            derived: dict[str, str] = {}
+            wls = rc2_cfg.get("workloads") or {}
+            for wk in rc2_wkeys:
+                if wk in wls and "tok_per_s" in wls[wk]:
+                    derived[wk] = f"{float(wls[wk]['tok_per_s']):.2f}"
+            tot_n = int(rc2_cfg.get("total_draft_n") or 0)
+            tot_acc = int(rc2_cfg.get("total_draft_accepted") or 0)
+            if tot_n > 0:
+                derived["accept_pct"] = f"{(100.0 * tot_acc / tot_n):.2f}"
+            elif "aggregate_accept_rate" in rc2_cfg:
+                derived["accept_pct"] = f"{float(rc2_cfg['aggregate_accept_rate']) * 100.0:.2f}"
+            if "mean_verified_len" in rc2_cfg:
+                derived["mean_verified_len"] = f"{float(rc2_cfg['mean_verified_len']):.2f}"
+
+            for metric_name, needle in derived.items():
+                for doc_rel, doc_txt in doc_texts.items():
+                    if needle not in doc_txt:
+                        g.fail(
+                            f"{doc_rel}: missing RouteCrack 2.0 metric {metric_name}={needle} from {entry['json']}"
+                        )
+
 
 # ---------------------------------------------------------------------------
-# Gate 6: Technical Paper (`paper/`) Freshness, Tarball Parity & Layout Check
+# Gate 6: Technical Paper (`paper/`) Freshness, Tarball Parity (tex + figures) & Layout Check
 # ---------------------------------------------------------------------------
 def check_paper(manifest: dict[str, Any], g: GateResult) -> None:
     pcfg = manifest.get("paper", {})
@@ -366,6 +438,16 @@ def check_paper(manifest: dict[str, Any], g: GateResult) -> None:
         if sec not in tex_norm:
             g.fail(f"{tex_p.name}: missing required topic '{sec}'")
 
+    # Ensure every \bibitem is cited at least once in the paper body
+    bib_keys = re.findall(r"\\bibitem\{([^}]+)\}", tex_txt)
+    cited_keys: set[str] = set()
+    for m in re.finditer(r"\\cite(?:\[[^\]]*\])?\{([^}]+)\}", tex_txt):
+        for k in m.group(1).split(","):
+            cited_keys.add(k.strip())
+    for bk in bib_keys:
+        if bk not in cited_keys:
+            g.fail(f"{tex_p.name}: uncited bibliography entry '\\bibitem{{{bk}}}'")
+
     fig_matches = re.findall(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", tex_txt)
     if len(fig_matches) < int(pcfg.get("min_figures", 1)):
         g.fail(f"{tex_p.name}: has {len(fig_matches)} figures (minimum required: {pcfg.get('min_figures', 1)})")
@@ -374,7 +456,7 @@ def check_paper(manifest: dict[str, Any], g: GateResult) -> None:
         if not fig_p.exists():
             g.fail(f"{tex_p.name}: referenced figure missing on disk: {fig_rel}")
 
-    # Verify arxiv-submission.tar.gz contains exact same main.tex and all referenced figures
+    # Verify arxiv-submission.tar.gz contains byte-identical main.tex AND byte-identical figures/*.pdf
     if tar_p.exists():
         with tarfile.open(tar_p, "r:gz") as tf:
             names = tf.getnames()
@@ -387,10 +469,21 @@ def check_paper(manifest: dict[str, Any], g: GateResult) -> None:
                 if tar_tex != tex_txt:
                     g.fail(f"{tar_p.name}: {tex_member} differs from paper/main.tex (rebuild tarball)")
             for fig_rel in fig_matches:
-                if not any(n.endswith(fig_rel) for n in names):
+                fig_member = next((n for n in names if n.endswith(fig_rel)), None)
+                if not fig_member:
                     g.fail(f"{tar_p.name}: missing referenced figure '{fig_rel}'")
+                else:
+                    fig_p = tex_p.parent / fig_rel
+                    if fig_p.exists():
+                        ef = tf.extractfile(fig_member)
+                        tar_sha = hashlib.sha256(ef.read()).hexdigest() if ef else ""
+                        disk_sha = sha256_file(fig_p)
+                        if tar_sha != disk_sha:
+                            g.fail(
+                                f"{tar_p.name}: figure '{fig_rel}' SHA-256 mismatch vs paper/{fig_rel} (rebuild tarball)"
+                            )
 
-    # Verify compiled PDF freshness, version, and no post-References floating tables
+    # Verify compiled PDF freshness, version, unresolved citations, CLI hyphen rendering, and float placement
     if pdf_p.exists() and shutil.which("pdftotext"):
         res = run_cmd(["pdftotext", str(pdf_p), "-"])
         if res.returncode != 0:
@@ -399,6 +492,10 @@ def check_paper(manifest: dict[str, Any], g: GateResult) -> None:
             pdf_txt = res.stdout
             if req_ver not in pdf_txt:
                 g.fail(f"{pdf_p.name}: does not contain '{req_ver}' (recompile PDF from main.tex)")
+            if "[?]" in pdf_txt or "??" in pdf_txt:
+                g.fail(f"{pdf_p.name}: contains unresolved citation/reference marker ('[?]' or '??')")
+            if "\u2013repack" in pdf_txt or "\u2013spec-type" in pdf_txt or "\u2013poll" in pdf_txt:
+                g.fail(f"{pdf_p.name}: CLI double-hyphen flags collapsed into en-dash (escape double hyphens inside \\texttt)")
             ref_matches = list(re.finditer(r"(?:^|\n|\f)References\s*\n", pdf_txt))
             if not ref_matches:
                 g.fail(f"{pdf_p.name}: could not locate References section in extracted text")
@@ -427,7 +524,6 @@ def check_links_and_dead_refs(_manifest: dict[str, Any], g: GateResult) -> None:
                     g.fail(f"{rel}: references deleted/removed artifact '{dead}'")
 
         if rel.endswith(".md"):
-            # Strip fenced code blocks so code examples don't trigger false link errors
             stripped = re.sub(r"```[\s\S]*?```", lambda m: "\n" * m.group(0).count("\n"), txt)
             for m in link_re.finditer(stripped):
                 target = m.group(1).strip().split()[0]
@@ -519,7 +615,6 @@ def check_syntax_and_tests(run_cpp: bool, g: GateResult) -> None:
                 ("avx2-fma", ["-mavx2", "-mfma", "-mno-avx512f"]),
                 ("native", ["-march=native"]),
             ]
-            # Only run x86 ISA flags on x86_64 hosts; fall back to native on ARM64
             if os.uname().machine not in ("x86_64", "AMD64"):
                 isa_profiles = [("native", ["-march=native"])]
             with tempfile.TemporaryDirectory() as td:
@@ -541,7 +636,7 @@ def check_syntax_and_tests(run_cpp: bool, g: GateResult) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Gate 10: OPSEC & Proprietary Separation Scan (Tracked Files + PDF Text)
+# Gate 10: OPSEC & Proprietary Separation Scan (Tracked Files + Paper PDF + Figure PDFs)
 # ---------------------------------------------------------------------------
 def check_opsec(manifest: dict[str, Any], g: GateResult) -> None:
     self_rel = Path(__file__).resolve().relative_to(REPO_ROOT).as_posix()
@@ -564,32 +659,53 @@ def check_opsec(manifest: dict[str, Any], g: GateResult) -> None:
                 line_no = txt.count("\n", 0, m.start()) + 1
                 g.fail(f"OPSEC leak in {rel}:{line_no}: {desc} ('{m.group(0)}')")
 
-    pdf_p = REPO_ROOT / manifest.get("paper", {}).get("pdf", "paper/llama-modchip-paper.pdf")
-    if pdf_p.exists() and shutil.which("pdftotext"):
-        res = run_cmd(["pdftotext", str(pdf_p), "-"])
-        if res.returncode == 0:
-            for cre, desc in compiled:
-                m = cre.search(res.stdout)
-                if m:
-                    g.fail(f"OPSEC leak in PDF {pdf_p.name}: {desc} ('{m.group(0)}')")
+    if shutil.which("pdftotext"):
+        pdf_targets: list[Path] = []
+        main_pdf = REPO_ROOT / manifest.get("paper", {}).get("pdf", "paper/llama-modchip-paper.pdf")
+        if main_pdf.exists():
+            pdf_targets.append(main_pdf)
+        fig_dir = REPO_ROOT / "paper/figures"
+        if fig_dir.exists():
+            pdf_targets.extend(sorted(fig_dir.glob("*.pdf")))
+        for pdf_p in pdf_targets:
+            res = run_cmd(["pdftotext", str(pdf_p), "-"])
+            if res.returncode == 0:
+                for cre, desc in compiled:
+                    m = cre.search(res.stdout)
+                    if m:
+                        g.fail(f"OPSEC leak in PDF {pdf_p.relative_to(REPO_ROOT)}: {desc} ('{m.group(0)}')")
 
 
 # ---------------------------------------------------------------------------
-# Gate 11: Remote Dual-Mirror Verification (GitHub Release + HF Fallback)
+# Gate 11: Remote Dual-Mirror Verification (GitHub Release + HF Mirror + SHA256SUMS + Remote Patch)
 # ---------------------------------------------------------------------------
+def _extract_hex64(val: str | None) -> str | None:
+    if not val:
+        return None
+    m = re.search(r"\b([0-9a-f]{64})\b", val.lower())
+    return m.group(1) if m else None
+
+
 def check_remote_mirrors(manifest: dict[str, Any], g: GateResult) -> None:
     gh_base = manifest["mirrors"]["github_release_base"].rstrip("/")
     hf_base = manifest["mirrors"]["hf_binary_fallback_base"].rstrip("/")
-    for artifact in manifest.get("artifacts", {}):
+    headers = {"User-Agent": "llama-modchip-preflight/1.1"}
+
+    # 1. Verify all dual-mirror binaries (HTTP 200, matching Content-Length, and HF LFS SHA-256 header when present)
+    for artifact, expected_sha in manifest.get("artifacts", {}).items():
         sizes: dict[str, int | None] = {}
         for label, url in (("GitHub", f"{gh_base}/{artifact}"), ("HF", f"{hf_base}/{artifact}")):
-            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "llama-modchip-preflight/1.0"})
+            req = urllib.request.Request(url, method="HEAD", headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=20) as resp:
                     if resp.status != 200:
                         g.fail(f"{label} mirror HTTP {resp.status} for {artifact}: {url}")
                     cl = resp.headers.get("Content-Length")
                     sizes[label] = int(cl) if cl and cl.isdigit() else None
+                    if label == "HF":
+                        hf_sha = _extract_hex64(resp.headers.get("X-Linked-Etag")) or _extract_hex64(resp.headers.get("ETag"))
+                        if hf_sha and hf_sha != expected_sha:
+                            g.fail(f"HF LFS SHA-256 mismatch for {artifact}: remote={hf_sha[:12]}... vs manifest={expected_sha[:12]}...")
             except Exception as exc:
                 g.fail(f"{label} mirror unreachable for {artifact}: {url} ({exc})")
         if sizes.get("GitHub") and sizes.get("HF") and sizes["GitHub"] != sizes["HF"]:
@@ -598,15 +714,61 @@ def check_remote_mirrors(manifest: dict[str, Any], g: GateResult) -> None:
                 f"GitHub={sizes['GitHub']} B vs HF={sizes['HF']} B"
             )
 
+    # 2. Verify GitHub-only artifacts (release tarballs)
     for artifact in manifest.get("github_only_artifacts", {}):
         url = f"{gh_base}/{artifact}"
-        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "llama-modchip-preflight/1.0"})
+        req = urllib.request.Request(url, method="HEAD", headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 if resp.status != 200:
                     g.fail(f"GitHub release asset HTTP {resp.status} for {artifact}: {url}")
         except Exception as exc:
             g.fail(f"GitHub release asset unreachable for {artifact}: {url} ({exc})")
+
+    # 3. Verify remote GitHub Release SHA256SUMS covers every binary, tarball, and active patch with exact SHA-256
+    sums_url = f"{gh_base}/SHA256SUMS"
+    patch_name = Path(manifest["patch_file"]).name
+    patch_sha = manifest["patch_sha256"]
+    try:
+        req = urllib.request.Request(sums_url, method="GET", headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if resp.status != 200:
+                g.fail(f"GitHub SHA256SUMS HTTP {resp.status}: {sums_url}")
+            sums_txt = resp.read().decode("utf-8", errors="replace")
+        remote_sums: dict[str, str] = {}
+        for line in sums_txt.splitlines():
+            m = re.match(r"^\s*([0-9a-fA-F]{64})\s+\*?(\S+)", line)
+            if m:
+                remote_sums[Path(m.group(2)).name] = m.group(1).lower()
+        expected_remote: dict[str, str] = {}
+        expected_remote.update(manifest.get("artifacts", {}))
+        expected_remote.update(manifest.get("github_only_artifacts", {}))
+        expected_remote[patch_name] = patch_sha
+        for name, exp_sha in expected_remote.items():
+            got = remote_sums.get(name)
+            if got is None:
+                g.fail(f"GitHub SHA256SUMS missing entry for {name}")
+            elif got != exp_sha:
+                g.fail(f"GitHub SHA256SUMS mismatch for {name}: remote={got[:12]}... vs manifest={exp_sha[:12]}...")
+    except Exception as exc:
+        g.fail(f"GitHub SHA256SUMS unreachable ({sums_url}): {exc}")
+
+    # 4. Download & verify live remote patch SHA-256 on BOTH GitHub Release and HF mirror
+    for label, url in (("GitHub", f"{gh_base}/{patch_name}"), ("HF", f"{hf_base}/{patch_name}")):
+        try:
+            req = urllib.request.Request(url, method="GET", headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status != 200:
+                    g.fail(f"{label} remote patch HTTP {resp.status}: {url}")
+                    continue
+                got_sha = hashlib.sha256(resp.read()).hexdigest()
+                if got_sha != patch_sha:
+                    g.fail(
+                        f"{label} remote {patch_name} SHA-256 drift: "
+                        f"remote={got_sha[:12]}... vs manifest={patch_sha[:12]}..."
+                    )
+        except Exception as exc:
+            g.fail(f"{label} remote patch unreachable ({url}): {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -642,10 +804,10 @@ def main() -> int:
         ("7. Links, Deleted File Refs & Issue Template Hygiene", lambda g: check_links_and_dead_refs(manifest, g)),
         ("8. Runtime Safety Invariants (AVX-512 VNNI, THP=madvise, /dev/shm UID)", lambda g: check_runtime_invariants(manifest, g)),
         ("9. Shell/Python Syntax, Unittests & Multi-ISA C++ Sanitizers", lambda g: check_syntax_and_tests(args.run_cpp_tests, g)),
-        ("10. OPSEC & Proprietary Separation (Files + PDF)", lambda g: check_opsec(manifest, g)),
+        ("10. OPSEC & Proprietary Separation (Files + PDF + Figures)", lambda g: check_opsec(manifest, g)),
     ]
     if args.verify_remote:
-        gates.append(("11. Remote Dual-Mirror Sync (GitHub + HF)", lambda g: check_remote_mirrors(manifest, g)))
+        gates.append(("11. Remote Dual-Mirror Sync (GitHub + HF + SHA256SUMS + Patch)", lambda g: check_remote_mirrors(manifest, g)))
     if not args.allow_dirty:
         gates.append(("12. Clean Git Working Tree", check_clean_git))
 

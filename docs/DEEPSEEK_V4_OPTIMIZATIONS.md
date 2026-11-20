@@ -58,7 +58,7 @@ Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` ([`patches/l
 
 ### 3.1. SVD Spectrum of the Linear `wo_b * wo_a` Operator (`31%` of DRAM Traffic = `991.6 MB/token`)
 
-In `deepseek4.cpp`, the attention output projection applies two consecutive `Q2_0` matrices across `8` head-groups (`4096` input MLA group dim $= 8 \text{ heads} \times 512 \text{ latent dim}$, `1024` inner LoRA rank per group, `8192` total) with **no activation function, no normalization, and no bias** between them:
+In `deepseek4.cpp`, the attention output projection applies two consecutive `FRACTAL_64` (`type 44`, or standard `Q4_K`/`Q6_K` in `MaxQ-v4`) matrices (`wo_a` $\to$ `wo_b`) across `8` head-groups (`4096` input MLA group dim $= 8 \text{ heads} \times 512 \text{ latent dim}$, `1024` inner LoRA rank per group, `8192` total) with **no activation function, no normalization, and no bias** between them:
 $$\mathbf{y}_{\text{attn}} = \sum_{g=1}^{8} \mathbf{W}_{o,b}^{(g)} \left( \mathbf{W}_{o,a}^{(g)} \mathbf{x}_g \right), \qquad \mathbf{W}_{o,a}^{(g)} \in \mathbb{R}^{1024 \times 4096},\; \mathbf{W}_{o,b}^{(g)} \in \mathbb{R}^{4096 \times 1024}$$
 
 De-quantizing the GGUF tensors (`blk.{0,3,4,10}.attn_output_{a,b}.weight`) and computing the Singular Value Decomposition $\mathbf{W}_{o,b}^{(g)} \mathbf{W}_{o,a}^{(g)} = \mathbf{U}_g \boldsymbol{\Sigma}_g \mathbf{V}_g^\top$ shows rapid spectral decay ($\sigma_0 = 15.398 \to \sigma_{768} = 0.901 \to \sigma_{1023} = 0.048$):
