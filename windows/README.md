@@ -21,6 +21,6 @@ The `windows/` directory provides two complementary workflows on Windows 10/11:
      - **`[2]` `NVIDIA-Nemotron-3.5-30B-A3B` (`Q4_0`, `17.60 GiB` or `Fractal-MXFP4`, `15.95 GiB`)** — *128K–256K Hybrid Mamba-2 + MoE*: places Mamba-2 + GQA + top MoE layers in GPU VRAM and remaining MoE layers in System RAM (`75.1–80.8 tok/s` on Radeon RX 9070 XT 16 GB Vulkan with `Fractal-MXFP4`).
      - **`[3]` `Qwen3-14B` (`Q4_K_M`, `8.4 GiB`)** — *100% GPU (`0 GB` System RAM)*: fits inside an `11 GB` RTX 2080 Ti at `~50–58 tok/s`.
      - **`[4]` `NVIDIA-Nemotron-H-8B-Reasoning-128K` (`Q8_0`, `8.0 GiB`)** — *100% GPU 128K*: 8-bit precision with 128K context (`~210 MB` KV cache) in VRAM at `~100+ tok/s`.
-   - Computes `--n-cpu-moe` dynamically from live free VRAM with a `550 MB` WDDM safety reserve so Windows does not spill allocations into shared GTT memory, auto-detects `--load-mode none` vs `--no-mmap` and `--spec-ngram-size-n` CLI flags, and starts `http://127.0.0.1:8080` (`/v1` OpenAI-compatible API).
+   - Computes `--n-cpu-moe` dynamically from live free VRAM with a `550 MB` WDDM safety reserve so Windows does not spill allocations into shared GTT memory, auto-detects `--load-mode none` vs `--no-mmap` and `routecrack2` vs `ngram-simple` speculative flags, and starts `http://127.0.0.1:8080` (`/v1` OpenAI-compatible API).
 
 3. To benchmark your Windows PC, run **[`BENCHMARK_PC.bat`](BENCHMARK_PC.bat)**. For custom `LUT-VQ3-64` / `Fractal-64` checkpoints, see **[`README_WINDOWS_PORT.md`](README_WINDOWS_PORT.md)**.

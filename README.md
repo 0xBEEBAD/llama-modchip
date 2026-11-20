@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/badge/release-v3.1.0-3fb950?style=flat-square)](RELEASE_NOTES.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-58a6ff?style=flat-square)](LICENSE)
 [![Quality Gate](https://img.shields.io/badge/blind%20wiki--alt%20PPL-3.43%20(64GB)%20%C2%B7%206.86%20(284B)%20%C2%B7%20100%2F100%20(30B)-2ea043?style=flat-square)](benchmarks/QUALITY_GATE_VQ3_64.md)
-[![Technical Paper PDF](https://img.shields.io/badge/PDF-v2.4%20paper%20snapshot-b31b1b?style=flat-square)](paper/llama-modchip-paper.pdf)
+[![Technical Paper PDF](https://img.shields.io/badge/PDF-v3.1.0%20technical%20paper-b31b1b?style=flat-square)](paper/llama-modchip-paper.pdf)
 [![Architecture](https://img.shields.io/badge/docs-ARCHITECTURE.md-bc8cff?style=flat-square)](ARCHITECTURE.md)
 [![Drafter](https://img.shields.io/badge/drafter-RouteCrack%202.0%20(L1%20Micro--Arbiter)-d29922?style=flat-square)](speculative/ROUTECRACK_TECHNIQUES.md)
 [![Submit Benchmark](https://img.shields.io/badge/leaderboard-Submit%20Your%20CPU-2ea043?style=flat-square)](https://github.com/synchopate/llama-modchip/issues/new?template=cpu_benchmark_submission.yml)
@@ -112,7 +112,7 @@ env RC_TABLES_DIR=/nonexistent "./llama-server-modchip-linux-x86_64-${BIN_ISA}" 
 | `./modchip` Command | Description |
 | :--- | :--- |
 | **`./modchip setup`** | Auto-detects RAM tier (`16 / 32 / 64 GB`) & CPU ISA, installs `v3.1.0` engine + SHA-256 verified GGUF |
-| **`./modchip download-bin`** | Installs portable `GLIBC_2.30` Linux `x86_64` `-avx512` or `-avx2` `v3.1.0` binary |
+| **`./modchip download-bin [--all-tools]`** | Installs portable `GLIBC_2.30` Linux `x86_64` `-avx512` or `-avx2` `v3.1.0` binaries (`--all-tools` adds `bench`/`perplexity`/`quantize`) |
 | **`./modchip start` / `stop`** | Starts or stops background `llama-server` (`:8789`) + Agentic SSE Gateway (`:8787`) |
 | **`./modchip chat`** | Interactive terminal chat with live `tok/s`, TTFT, and `RouteCrack 2.0` telemetry |
 | **`./modchip web`** | Opens the Dark-Mode Web Chat & Live Telemetry HUD (`http://127.0.0.1:8787`) |
@@ -141,11 +141,11 @@ Evaluated on `40 x 512` blind `wiki-alt.txt` chunks (`0.000000%` 8-gram and 13-g
 - **Opt-In Gated-Residual Over-Projected Abliterated Twins (`qwen38-64gb-ablit` & `qwen38-32gb-ablit`):** Applies TPE-optimized signed over-projection (`beta = 1.83 - 2.39` across `blk.31..47` from [`trohrbaugh/Qwen3.8-Flash-Next-heretic-2`](https://huggingface.co/trohrbaugh/Qwen3.8-Flash-Next-heretic-2), `0 / 100` refusals at `0.0818` KLD — compensating for `Qwen3.8`'s widened multi-stream Gated Residual branches — plus signed `beta = 2.2508` `blk.48` `NextN` MTP alignment and ConeCollapse `ffn_down_exps.bias` alignment on `32GB`) onto virgin `MaxQ-64GB` (`27` tensors edited / `1,058` bit-identical) and `MaxQ-32GB` (`32` tensors edited / `1,095` bit-identical) while sharing the exact `10.73 GiB` `Q1_0` PLE Shard 2.
 
 <details>
-<summary><b>Pinned <code>v3.0</code> Fleet GGUF <code>SHA-256</code> Checksums (`./modchip checksums`)</b></summary>
+<summary><b>Pinned <code>v3.1.0</code> Fleet GGUF, Binary &amp; Patch <code>SHA-256</code> Checksums (`./modchip checksums`)</b></summary>
 <br/>
 
 ```text
-# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ (v3.0)
+# 32 GB & 64 GB Tiers — Qwen3.8-Flash-Next-MaxQ
 f2b8bc79acb4b4d79033acd91c9c360ba96da92cd5841512befc450e15f4786f  Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf (46,449,692,736 B)
 1dac27e81a3a73dcec21edea78f224eb48393a726e3f9ee7676c603d3174e82f  Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf (46,449,692,736 B)
 06cb65f9cf6e510cd16500ca1719701a0ffa13dcaa4c4d0cc135e4f2071a8b4d  Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf (26,821,627,808 B)
@@ -153,16 +153,30 @@ f2b8bc79acb4b4d79033acd91c9c360ba96da92cd5841512befc450e15f4786f  Qwen3.8-Flash-
 86b79714867743ddf5911ee7dff2717ae275f870551d86469cbdbf026c6b552e  Qwen3.8-Flash-Next-MaxQ-{64GB,32GB}[-Abliterated]-00002-of-00002.gguf (11,520,055,616 B)
 ef2af1d6aa8a22740c7252bc7ce40c5c2f1249aa8d9c8499a4d4572c3cfdf9df  mmproj-Qwen3.8-Flash-Next-BF16.gguf (907,542,880 B)
 
-# 64 GB Tier — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B · v3.0)
+# 64 GB Tier — DeepSeek-V4-Flash-0731-MaxQ-v4 (284B)
 6112e887b21d1fdf7b7196232b528698a6ec2d5a59760a040cb4231f8e8d691b  DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf (5,258,336 B)
 5d85c740992b70395da5c3e4a856b3fad6ef725271722c8d837b35befe28330d  DeepSeek-V4-Flash-0731-MaxQ-v4-00002-of-00003.gguf (35,543,586,816 B)
 a8654d4d5fedf748d6f2b6404a8b7f9e19435a8aa8e2bb97ce9a66bc012c0f3a  DeepSeek-V4-Flash-0731-MaxQ-v4-00003-of-00003.gguf (26,721,192,096 B)
 
-# 16 GB Tier — NVIDIA-Nemotron-3.5-30B-A3B (v3.0)
+# 16 GB Tier — NVIDIA-Nemotron-3.5-30B-A3B
 26b884d70a52046a7198c4e01cac397af8bf44584b04cdcf59f896145587db67  NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf (14,382,336,640 B · 100% std ggml)
-04a460cdd831002d80b2f47ec5d70e7a92227abcf0a57f31ad73fe0bd50e711f  NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · v3.0 types 44/45)
-3a3a09eac29b5906397ca6a93d2ff0f566fca0bdd365294d067aeb5d0ebf4a1b  NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · v3.0 type 44)
-75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2af53e57  NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · v3.0 types 44/45)
+04a460cdd831002d80b2f47ec5d70e7a92227abcf0a57f31ad73fe0bd50e711f  NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · types 44/45)
+3a3a09eac29b5906397ca6a93d2ff0f566fca0bdd365294d067aeb5d0ebf4a1b  NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · type 44)
+75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2af53e57  NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · types 44/45)
+
+# Portable llama-modchip v3.1.0 Linux x86_64 Binaries, Tarball & Patch (GLIBC <= 2.30)
+abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2  patches/llama-modchip-v3.1.patch
+6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6  llama-server-modchip-linux-x86_64-avx512
+32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee  llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)
+882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a  llama-cli-modchip-linux-x86_64-avx512
+1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2  llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)
+607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f  llama-bench-modchip-linux-x86_64-avx512
+a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617  llama-bench-modchip-linux-x86_64-avx2
+a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53  llama-perplexity-modchip-linux-x86_64-avx512
+071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724  llama-perplexity-modchip-linux-x86_64-avx2
+97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2  llama-quantize-modchip-linux-x86_64-avx512
+1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576  llama-quantize-modchip-linux-x86_64-avx2
+258c85d4d9a4b4953fb82fbfa18cb0e3dd867b00ccff74e04d9867376c4ea60b  llama-modchip-v3.1.0-linux-x86_64.tar.gz
 ```
 
 </details>
@@ -173,29 +187,33 @@ a8654d4d5fedf748d6f2b6404a8b7f9e19435a8aa8e2bb97ce9a66bc012c0f3a  DeepSeek-V4-Fl
 
 | Flagship Model Family | Pure `N=1` (`none`) | `v3.0` Default Speculator | **`RouteCrack 2.0` (`v3.1.0` `routecrack2`)** | Gain vs `N=1` / `v3.0` | `W1` / `W2` / `W3` / `W4` (`tok/s`) | Acceptance (`Mean Len`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`Qwen3.8-Flash-Next-MaxQ-64GB`**<br/>*(`176.5B`, `5B` Active, `blk.48` MTP)* | `8.78 t/s`<br/>*(`8.78 / 8.75 / 8.76 / 8.84`)* | `12.24 t/s` *(`MTP-1`)*<br/>`13.87 t/s` *(`v3.0`)* | **`15.88 tok/s`** | **`+80.8%` vs `N=1`**<br/>**`+29.7%` vs `MTP-1` / `+14.5%` vs `v3.0`** | **`21.98` / `17.85` / `12.98` / `13.47`**<br/>*(`4/4` wins, `100%` exact `W1`+`W2`)* | **`82.40%`** (`3.71`) |
+| **`Qwen3.8-Flash-Next-MaxQ-64GB`**<br/>*(benchmarked on `-Abliterated`, `176.5B`/`5B`, `blk.48` MTP)* | `8.78 t/s`<br/>*(`8.58 / 8.76 / 8.84 / 8.82`)* | `12.24 t/s` *(`MTP-1`)*<br/>`13.87 t/s` *(`v3.0`: `16.77 / 17.13 / 12.72 / 10.77`)* | **`15.88 tok/s`** | **`+80.8%` vs `N=1`**<br/>**`+29.7%` vs `MTP-1` / `+14.5%` vs `v3.0`** | **`21.98` / `17.85` / `12.98` / `13.47`**<br/>*(`4/4` wins, `100%` exact `W1`+`W2`)* | **`82.40%`** (`3.71`) |
 | **`DeepSeek-V4-Flash-0731-MaxQ-v4`**<br/>*(`284.3B`, `13.2B` Active, Heavy-MoE)* | `6.80 t/s`<br/>*(`6.48 / 6.70 / 6.90 / 7.01`)* | `7.73 t/s`<br/>*(`ngram-map-k`: `11.90 / 7.39 / 6.74 / 6.55`)* | **`7.79 tok/s`** | **`+14.5%` vs `N=1`**<br/>**`+0.84%` vs `v3.0`** | **`12.31` / `7.55` / `6.74` / `6.49`**<br/>*(`100%` exact `W1`+`W2`; see note)* | **`85.92%`** (`2.97`) |
 | **`NVIDIA-Nemotron-3.5-30B-A3B`**<br/>*(benchmarked on `Fractal-MXFP4`, `30B`/`3B`)* | `22.60 t/s`<br/>*(`22.20 / 22.57 / 22.69 / 22.61`)* | `27.13 t/s`<br/>*(`ngram-map-k`: `42.54 / 26.08 / 22.65 / 23.80`)* | **`28.20 tok/s`** | **`+24.8%` vs `N=1`**<br/>**`+3.96%` vs `v3.0`** | **`42.18` / `28.83` / `22.97` / `24.72`**<br/>*(`+10.5%` `W2`, `100%` exact `W1`+`W2`)* | **`78.59%`** (`3.35`) |
 
 - **Why `RouteCrack 2.0` Beats Both `draft-mtp` and `ngram-map-k`:** On 1-layer NextN MTP models (`Qwen3.8`, `chain_heads == false`), standard `draft-mtp` (`n_max = 3`) chains `3 × ~15 ms` sequential `248K` `lm_head` passes feeding its own `pending_h` without target intermediate hidden states or symbolic suffix extension, while immediately halting fallback drafters (`dp.drafting = false`). `RouteCrack 2.0` either bypasses the `~15 ms` MTP `lm_head` pass in `< 250 ns` on strong context matches (`fastpath`) or runs a single `d = 0` MTP pass and anchors `[prompt..., id_last, mtp_t0]` into the Two-Zone 3-gram suffix index + Stockfish TT to extend up to `5` tokens (`mean_len = 3.71`) while keeping `ctx_dft` 100% position-aligned on partial acceptances. On non-MTP models (`Nemotron-30B` & `DeepSeek-V4 284B`), `RouteCrack 2.0` fuses `RCPredictor` + Two-Zone Suffix + 28-bit Tagged Mode Refutation (eliminating JSON/prose mode-bleed divergence on `W2`) and automatically selects `kRC2HeavyMoEDraftlessArbiter` when `n_expert > 0 && model_bytes > 35 GiB`.
-- **Transparent Per-Workload & Greedy Identity Notes:** On `Qwen3.8`, `RouteCrack 2.0` is `100%` greedy bit-exact on structured code & multi-tool JSON `W1+W2` (`254/254`), with lossless target-argmax verification on `W3+W4` (where `batch > 1` GEMM vs `batch = 1` GEMV FP32 FMA rounding diverges at near-tied logits, identical to `MTP-1` and `v3.0 draft-mtp`). On `DeepSeek-V4 284B` (no MTP head), `RouteCrack 2.0` accelerates `W1` (`+90.0%` vs `N=1`, `+3.4%` vs `v3.0`) and `W2` (`+12.7%` vs `N=1`, `+2.2%` vs `v3.0`, `100%` exact), while high-entropy greenfield/prose (`W3 = 6.74 vs 6.90 N=1 [-2.4%]`, `W4 = 6.49 vs 7.01 N=1 [-7.4%]`) reflects `284B` DDR5 `256`-expert pull cost when context n-grams miss (yielding `+14.51%` overall aggregate gain). On `Nemotron-3.5 30B` (benchmarked on `Fractal-MXFP4`), `W1` is `-0.85%` vs `v3.0` (`42.18` vs `42.54 t/s`) while `W2` (`+10.5%`, `100%` exact), `W3` (`+1.4%`), and `W4` (`+3.9%`) lift overall aggregate speed by `+3.96%` (`+24.78%` vs `N=1`).
+- **Transparent Per-Workload & Greedy Identity Notes:** On `Qwen3.8` (`MaxQ-64GB-Abliterated`), `RouteCrack 2.0` is `100%` greedy bit-exact on structured code & multi-tool JSON `W1+W2` (`254/254`), with lossless target-argmax verification on `W3+W4` (where `batch > 1` GEMM vs `batch = 1` GEMV FP32 FMA rounding diverges at near-tied logits, identical to `MTP-1` and `v3.0 draft-mtp`). On `DeepSeek-V4 284B` (no MTP head), `RouteCrack 2.0` accelerates `W1` (`+90.0%` vs `N=1`, `+3.4%` vs `v3.0`) and `W2` (`+12.7%` vs `N=1`, `+2.2%` vs `v3.0`, `100%` exact), while high-entropy greenfield/prose (`W3 = 6.74 vs 6.90 N=1 [-2.4%]`, `W4 = 6.49 vs 7.01 N=1 [-7.4%]`) reflects `284B` DDR5 `256`-expert pull cost when context n-grams miss (yielding `+14.51%` overall aggregate gain). On `Nemotron-3.5 30B` (benchmarked on `Fractal-MXFP4`), `W1` is `-0.85%` vs `v3.0` (`42.18` vs `42.54 t/s`) while `W2` (`+10.5%`, `100%` exact), `W3` (`+1.4%`), and `W4` (`+3.9%`) lift overall aggregate speed by `+3.96%` (`+24.78%` vs `N=1`).
 
-### 3. `llama-modchip v3.0` Engine Baseline, `248K` Speculative Shootout & `/dev/shm` Hybrid Restore
+<details>
+<summary><b>3. Historical <code>v3.0</code> Engine Baseline, <code>248K</code> Speculative Shootout &amp; <code>/dev/shm</code> Hybrid State Restore (<code>19–38.5 ms</code>)</b></summary>
+<br/>
 
 Measured on 16 Zen 5 cores (`taskset -c 16-31`, `mmap` enabled, default `--repack` ON, `RC_TABLES_DIR=/nonexistent`):
 
 | Edition & Speculative Mode | Stage 4C Baseline (`-t 16 --poll 50 -nr`) | **`llama-modchip v3.0` (`-t 15 -tb 15 --poll 0`, `--repack` ON)¹** | Combined Gain¹ | Speculative Acceptance | Peak `VmHWM` (`RssAnon`) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **`MaxQ-64GB` — Pure `N=1` (`none`)** | `42.17 pp` / `4.69 t/s tg` | **`72.18 t/s pp512`** / **`6.37 t/s tg128`** | **`+71.2% pp` / `+35.7% tg`** | — | `44.9 GiB` (`0.55 GiB`) |
-| **`MaxQ-64GB` — Built-In `draft-mtp` (Default)** | `39.24 pp` / `7.33 t/s tg` *(`2.56` broken repack)* | **`71.97 t/s pp512`** / **`12.66 t/s tg128`** *(peak `12.82`)* | **`+83.4% pp` / `+72.8% tg`** *(`1.99x` over `none`)* | **`93.00%`** (`279/300`) | **`45.08 GiB`** (`1.81 GiB`) |
+| **`MaxQ-64GB` — Built-In `draft-mtp` (`v3.0` baseline)** | `39.24 pp` / `7.33 t/s tg` *(`2.56` broken repack)* | **`71.97 t/s pp512`** / **`12.66 t/s tg128`** *(peak `12.82`)* | **`+83.4% pp` / `+72.8% tg`** *(`1.99x` over `none`)* | **`93.00%`** (`279/300`) | **`45.08 GiB`** (`1.81 GiB`) |
 | **`MaxQ-64GB` — `Stockfish-PVS v2` (`inplace_edit` cold `rep 0`)²** | — | **`75.2 t/s pp`** / **`10.58 t/s tg128`** *(vs `12.99` `draft-mtp`)* | **`1.67x` over `none`** | **`91.25%`** (cold) | `44.23 GiB` (`-0.85 GiB`) |
 | **`MaxQ-32GB` — Pure `N=1` (`none`)** | `68.66 pp` / `6.08 t/s tg` | **`82.11 t/s pp512`** / **`6.67 t/s tg128`** | **`+19.6% pp` / `+9.7% tg`** | — | `26.3 GiB` (`0.69 GiB`) |
-| **`MaxQ-32GB` — Built-In `draft-mtp` (Default)** | `61.39 pp` / `9.46 t/s tg` *(`8.39` pre-`v3.0` repack)* | **`74.55 t/s pp512`** / **`11.45 t/s tg128`** *(`14.29` `inplace_edit`)* | **`+21.5% pp` / `+21.1% tg`** *(`1.72x` over `none`)* | **`73.73%–100.0%`** | **`26.91 GiB`** (`1.92 GiB`) |
+| **`MaxQ-32GB` — Built-In `draft-mtp` (`v3.0` baseline)** | `61.39 pp` / `9.46 t/s tg` *(`8.39` pre-`v3.0` repack)* | **`74.55 t/s pp512`** / **`11.45 t/s tg128`** *(`14.29` `inplace_edit`)* | **`+21.5% pp` / `+21.1% tg`** *(`1.72x` over `none`)* | **`73.73%–100.0%`** | **`26.91 GiB`** (`1.92 GiB`) |
 | **`MaxQ-32GB` — `Stockfish-PVS v2` (`inplace_edit` cold `rep 0`)²** | — | **`78.03 t/s pp`** / **`12.82 t/s tg128`** *(vs `13.76` `draft-mtp`)* | **`1.87x` over `none`** *(`+11.0%` faster `pp`)* | **`91.25%`** (cold) | `26.38 GiB` (`-0.53 GiB`) |
 
 *(¹ **Transparent Speedup Attribution:** Stage 4C ran oversubscribed `-t 16 --poll 50 --no-repack` on 16 logical CPUs, whereas Stage 4D-1 ran `-t 15 -tb 15 --poll 0 --poll-batch 0` with `v3.0` default `--repack` ON. The `+72.8%` [`MaxQ-64GB`] and `+21.1%` [`MaxQ-32GB`] decode gains reflect the **combined** `llama-modchip v3.0` SIMD/GDN/repack engine optimizations plus non-convoy `-t <N-1> --poll 0` scheduling [`step0` isolated `-t 15 --poll 0` at `+25.9% pp / +31.3% tg` on `32GB none`].)*  
-*(² **Speculative Shootout Note:** Built-in `draft-mtp` won cold single-turn `rep 0` `tg128` on **`6 / 6` (`100%`)** of `(edition, prompt)` pairs and is the default for `Qwen3.8`. Zero-weight `Stockfish-PVS v2 / RouteCrack` [`--spec-type ngram-simple --spec-ngram-simple-size-n 3 --spec-ngram-simple-size-m 3 --spec-ngram-simple-min-hits 1`] achieved `10.58–12.82 t/s` [`1.67x–1.87x`] on cold `rep 0` source-in-context refactoring with faster prefill and lower RAM, making it the recommended fallback for MTP-less checkpoints or iterative multi-turn edit loops. Opt-in `LLAMA_MOE_TOP_K=8` adds `+5.7% tg / +8.5% pp` on `MaxQ-32GB` at a `+0.41` 40-chunk PPL cost, so unpruned `TOP_K=10` remains strictly default.)*  
+*(² **Speculative Default Progression (`v3.0` -> `v3.1.0`):** In `v3.0`, standalone `draft-mtp` won cold single-turn `rep 0` `tg128` on `6 / 6` `(edition, prompt)` pairs while zero-weight `Stockfish-PVS v2` excelled on in-context refactoring. In `v3.1.0`, **`RouteCrack 2.0` (`--spec-type routecrack2`)** supersedes both as the default across all three families by fusing MTP anchoring, Two-Zone Suffix fast-path bypass, and Stockfish-PVS under the 832 B L1 Micro-Arbiter (`15.88 avg / 21.98 peak tok/s` on `Qwen3.8`, `+14.5%` over `v3.0 draft-mtp`). Opt-in `LLAMA_MOE_TOP_K=8` adds `+5.7% tg / +8.5% pp` on `MaxQ-32GB` at a `+0.41` 40-chunk PPL cost, so unpruned `TOP_K=10` remains strictly default.)*  
 *(³ **`/dev/shm` Hybrid State Snapshot:** Saving and restoring a 512-token `Qwen3.8` Slot-0 hybrid state [`233.14 MiB` = `36` GDN `[48x128x128]` FP32 + `12` QSA `Q8_0` KV + 1 HARP checkpoint] completes in **`38.49 ms` avg (`38.16 ms` min, `6.11 GiB/s`, `162x` faster than `6.18s` prefill; `~19 ms` / `120.6 MiB` with `--ctx-checkpoints 0`)** with 100% bit-exact greedy continuation [`SHA256 = 8e5a6444...`].)*
+
+</details>
 
 ### 4. `DeepSeek-V4-Flash 284B` (`64 GB` Tier) & `NVIDIA-Nemotron-3.5-30B-A3B` (`16 GB` Tier)
 
@@ -248,8 +266,8 @@ Run **`./modchip bench`** (or **`windows\BENCHMARK_PC.bat`** on Windows) and **[
 
 | Hardware Platform (`CPU / SoC / Hybrid`) | Cores / Cache | Memory | Prefill (`tok/s`) | Decode — Prose / C++20 | Decode — Speculative / Burst | Config & Contributor |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`Qwen3.8-MaxQ-64GB` on Zen 5 (`v3.0`)** | `16C` (`-t 15 --poll 0`, `AVX-512`) | `64 GB` Tier (`45.08 GiB` RSS, `0 GPU`) | **`71.97 – 75.58`** | **`6.37 tok/s`** *(pure `N=1`)* | **`12.66 avg / 12.99 peak tok/s`** *(`93.0%` `draft-mtp`)* | `@synchopate` (`v3.0` Gate 4D-1) |
-| **`Qwen3.8-MaxQ-32GB` on Zen 5 (`v3.0`)** | `16C` (`-t 15 --poll 0`, `AVX-512`) | `32 GB` Tier (`26.91 GiB <= 28.5 GiB`, `0 GPU`) | **`74.55 – 86.14`** | **`6.67 tok/s`** *(pure `N=1`)* | **`11.45 – 14.29 tok/s`** *(`draft-mtp`, `14.77` peak)* | `@synchopate` (`v3.0` Gate 4D-1) |
+| **`Qwen3.8-MaxQ-64GB` on Zen 5 (`v3.1.0`)** | `16C` (`-t 15 --poll 0`, `AVX-512`) | `64 GB` Tier (`45.08 GiB` RSS, `0 GPU`) | **`71.97 – 75.58`** | **`8.78 tok/s`** *(pure `N=1`)* | **`15.88 avg / 21.98 peak tok/s`** *(`82.4%` `RouteCrack 2.0`)* | `@synchopate` (`v3.1.0` JSON) |
+| **`Qwen3.8-MaxQ-32GB` on Zen 5 (`v3.1.0`)** | `16C` (`-t 15 --poll 0`, `AVX-512`) | `32 GB` Tier (`26.91 GiB <= 28.5 GiB`, `0 GPU`) | **`74.55 – 86.14`** | **`6.67 tok/s`** *(pure `N=1`)* | **`11.45 – 14.29 tok/s`** *(`RouteCrack 2.0` / `v3.0` `14.77` peak)* | `@synchopate` (`v3.1.0` / `v3.0`) |
 | **AMD Threadripper PRO 7985WX (`Zen 4`)** | `64C/128T` (`8 CCDs`, `256 MB` L3) | `256 GB` 8-Ch DDR5-6000 (`0 GPU`) | **`386.00`** *(`-t 32`)* | **`73.84 – 80.14 tok/s`** | **`111.62 tok/s` warm** / **`80.14` cold** *(`-t 32` 4C/CCD)* | `@aifartist` ([Issue #1](https://github.com/synchopate/llama-modchip/issues/1#issuecomment-6595559921)) |
 | **AMD Ryzen Threadripper 9960X (`Zen 5`)** | `24C/48T` (`4 CCDs`, `AVX-512 VBMI`) | `125 GB` 4-Ch DDR5 (`14.91 GiB` RSS, `2MB THP: 4.45 GiB`, `0 GPU`) | **`450.36`** *(`-t 24`)* | **`49.25 tok/s`** *(`TTFT 254 ms`)* | **`54.43 tok/s`** *(`73.8%` Stockfish-PVS, `VQ3-64`)* | `@pedrosousabarreto` ([Issue #40](https://github.com/synchopate/llama-modchip/issues/40#issuecomment-6916491282)) |
 | **AMD Ryzen 9 7945HX3D + RX 9070 XT (`Hybrid`)** | `16C/32T` (`128 MB` 3D V-Cache) + `16 GB` Vulkan | `94 GB` DDR5 + `16 GB` VRAM | **`563.00`** *(256K ctx)* | **`75.10 tok/s`** *(`MXFP4` 15.2GB)* | **`80.80 tok/s`** *(Vulkan `SSM_SCAN` + `MXFP4` MoE)* | `Community (RADV/Vulkan)` ([`FAQ.md`](FAQ.md)) |
@@ -280,25 +298,32 @@ Run **`./modchip bench`** (or **`windows\BENCHMARK_PC.bat`** on Windows) and **[
 
 ```text
 llama-modchip/
-├── modchip                                    # Unified CLI (setup | download-bin | start | chat | bench | eval | web | claude | stop)
-├── install.sh                                 # Zero-to-Running 3-Tier Installer (16 GB / 32 GB / 64 GB)
+├── modchip                                    # Unified CLI (setup | download-bin [--all-tools] | start | chat | bench | eval | web | claude | stop)
+├── install.sh                                 # Zero-to-Running 3-Tier Installer (16 GB / 32 GB / 64 GB, pinned HF SHAs)
+├── release_manifest.json                      # Canonical Single Source of Truth (version, ABI 41..45, SHA-256s, benchmarks)
 ├── README.md / ARCHITECTURE.md / FAQ.md       # Overview, Systems Architecture & Engineering FAQ
 ├── RELEASE_NOTES.md                           # v3.1.0 & Historical Release Notes
 ├── patches/
 │   ├── llama-modchip-v3.1.patch               # Unified v3.1.0 RouteCrack 2.0 patch onto llama.cpp de32b268c (Linux, macOS Metal, Windows, CUDA, Vulkan)
-│   └── llama-modchip-v3.0.patch               # Preserved v3.0 unified patch
+│   └── archive/llama-modchip-v3.0.patch       # Archived v3.0 unified patch
 ├── scripts/
 │   ├── build_zen5_llama.sh                    # Cross-platform CMake builder (applies llama-modchip-v3.1.patch, pins b12416 UI)
+│   ├── build_trunk_quant.sh                   # Nemotron trunk-q5 / trunk-q4 selective quantizer (PR #49)
+│   ├── gguf_tensor_type.py                    # GGUF routed-expert tensor type inspector (ABI 0..45)
+│   ├── preflight_release_check.py             # Mandatory 12-Gate Release Preflight Verifier
 │   ├── llama_modchip.py                       # <5ms GGUF & CPU/Cache Topology Profiler + Live SHM TUI
 │   ├── chat.py                                # Zero-dependency Streaming Chat & 2-Stage CPU Scorecard
 │   └── check_cpu_readiness.py                 # Standalone CPU/RAM/THP & DRAM Bandwidth Estimator
+├── speculative/                               # RouteCrack 2.0 + 832 B L1 Micro-Arbiter + Stockfish-PVS (C++17 headers & ASan tests)
+├── gateway/sse_gateway.py                     # Multi-Model Agentic SSE Proxy + HARP-Cache + Dark-Mode Web HUD (:8787)
+├── kv_cache/                                  # HARP-Cache & Entropy-Adaptive KV Compression + unit tests
 ├── apple-silicon/                             # Apple Silicon M1–M5 Metal + ARM64 NEON setup & run scripts
 ├── windows/                                   # Windows 10/11 MinGW-w64 & CUDA Builder + Hybrid GPU/CPU Launcher
 ├── fedora/                                    # Fedora 44 / Ryzen 7 8745HS (GEEKOM A8) script
-├── gateway/sse_gateway.py                     # Agentic SSE Proxy + HARP-Cache + Dark-Mode Web HUD (:8787)
-├── speculative/                               # RouteCrack + Stockfish-PVS v2 (248K-vocab 32-bit token safe)
-├── benchmarks/                                # Reproducible Quality Gate suites, KLD/PPL evaluators & logs
-└── docs/                                      # Model & hardware deep-dive guides
+├── systemd/                                   # Production systemd service units & madvise THP tmpfiles.d config
+├── paper/                                     # v3.1.0 Technical Paper (main.tex, figures/*.pdf, llama-modchip-paper.pdf, arxiv-submission.tar.gz)
+├── benchmarks/                                # v3.1.0 Quality Gate reports, KLD/PPL evaluators & raw JSON logs
+└── docs/                                      # Model, hardware, Windows port & release procedure guides
 ```
 
 Manual source compilation on Linux or macOS:

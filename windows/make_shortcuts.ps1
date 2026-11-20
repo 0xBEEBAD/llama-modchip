@@ -1,5 +1,5 @@
-﻿# Builds the desktop preset tree for llama-modchip:
-#   Desktop\DSV4 пресеты\<ctx>\быстрый|точный.lnk
+﻿# Builds the desktop preset tree for llama-modchip v3.1.0:
+#   Desktop\Modchip Presets\<ctx>\fast|exact.lnk
 # Re-run any time: powershell -ExecutionPolicy Bypass -File windows\make_shortcuts.ps1
 
 $ErrorActionPreference = "Stop"
@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PresetDir = Join-Path $ScriptDir "presets"
 $Desktop   = [Environment]::GetFolderPath("Desktop")
-$Root      = Join-Path $Desktop "DSV4 пресеты"
+$Root      = Join-Path $Desktop "Modchip Presets"
 $ServerExe = Join-Path $ScriptDir "bin-modchip\llama-server.exe"
 
 New-Item -ItemType Directory -Path $PresetDir -Force | Out-Null
@@ -40,7 +40,7 @@ ping -n 6 127.0.0.1 >nul
 @"
 @echo off
 chcp 65001 >nul
-title Stop DSV4 server
+title Stop llama-modchip server
 taskkill /IM llama-server.exe /F >nul 2>&1
 if errorlevel 1 (echo Server was not running.) else (echo Server stopped.)
 ping -n 3 127.0.0.1 >nul
@@ -63,41 +63,36 @@ foreach ($ctx in $contexts) {
     $sub = Join-Path $Root $label
     New-Item -ItemType Directory -Path $sub -Force | Out-Null
 
-    # fast preset: 4 of 6 experts
-    Write-PresetBat -file ("ctx{0}_fast.bat" -f $ctx) -ctx "$ctx" -extra "-Fast" -title "DSV4 $label fast"
-    New-Link -lnk (Join-Path $sub "быстрый — 8 tok-s.lnk") -target (Join-Path $PresetDir ("ctx{0}_fast.bat" -f $ctx)) -desc "ctx $ctx, MoE Top-K 4 (fast)"
+    # fast preset: pruned MoE Top-4 (for DeepSeek-V4) + RouteCrack 2.0
+    Write-PresetBat -file ("ctx{0}_fast.bat" -f $ctx) -ctx "$ctx" -extra "-Fast" -title "llama-modchip $label fast"
+    New-Link -lnk (Join-Path $sub "Fast (Top-4 + RouteCrack 2.0).lnk") -target (Join-Path $PresetDir ("ctx{0}_fast.bat" -f $ctx)) -desc "ctx $ctx, MoE Top-K 4 + RouteCrack 2.0"
 
-    # exact preset: all 6 experts
-    Write-PresetBat -file ("ctx{0}_exact.bat" -f $ctx) -ctx "$ctx" -extra "" -title "DSV4 $label exact"
-    New-Link -lnk (Join-Path $sub "точный — 6.3 tok-s.lnk") -target (Join-Path $PresetDir ("ctx{0}_exact.bat" -f $ctx)) -desc "ctx $ctx, MoE Top-K 6 (unpruned)"
+    # exact preset: unpruned model experts + RouteCrack 2.0
+    Write-PresetBat -file ("ctx{0}_exact.bat" -f $ctx) -ctx "$ctx" -extra "" -title "llama-modchip $label exact"
+    New-Link -lnk (Join-Path $sub "Exact (Unpruned + RouteCrack 2.0).lnk") -target (Join-Path $PresetDir ("ctx{0}_exact.bat" -f $ctx)) -desc "ctx $ctx, unpruned MoE + RouteCrack 2.0"
 
-    $made += (Join-Path $sub "быстрый — 8 tok-s.lnk")
-    $made += (Join-Path $sub "точный — 6.3 tok-s.lnk")
+    $made += (Join-Path $sub "Fast (Top-4 + RouteCrack 2.0).lnk")
+    $made += (Join-Path $sub "Exact (Unpruned + RouteCrack 2.0).lnk")
 }
 
-New-Link -lnk (Join-Path $Root "ОСТАНОВИТЬ сервер.lnk") -target (Join-Path $PresetDir "STOP_server.bat") -desc "Stops llama-server.exe"
-$made += (Join-Path $Root "ОСТАНОВИТЬ сервер.lnk")
+New-Link -lnk (Join-Path $Root "STOP llama-modchip server.lnk") -target (Join-Path $PresetDir "STOP_server.bat") -desc "Stops llama-server.exe"
+$made += (Join-Path $Root "STOP llama-modchip server.lnk")
 
 $readme = @"
-DSV4 — DeepSeek-V4-Flash Fractal (локальная модель, 284B, 56.5 GiB)
+llama-modchip v3.1.0 -- Windows Desktop Presets (Qwen3.8 / DeepSeek-V4 MaxQ-v4 / Nemotron)
 
-Папки = размер контекста (сколько токенов модель держит в памяти разговора).
- 32K / 64K / 128K / 256K / 512K / 1M
+Folders correspond to context window length:
+  32K / 64K / 128K / 256K / 512K / 1M
 
-Внутри каждой папки два ярлыка:
-  быстрый — 4 из 6 экспертов на токен. ~8 tok/s. Качество чуть ниже, годится для рутины.
-  точный  — все 6 экспертов, как в оригинальной модели. ~6.3 tok/s. Максимальное качество.
+Each folder provides two launchers using RouteCrack 2.0 (--spec-type routecrack2):
+  Fast  -- Applies Top-4 L2-quadrature expert pruning on DeepSeek-V4 for higher throughput.
+  Exact -- Keeps all native routed experts unpruned for maximum output fidelity.
 
-Скорость от контекста почти не зависит, контекст влияет только на память:
-  32K -> 512K: всё влезает в 64 ГБ RAM спокойно
-  1M: ~16 ГБ свободной RAM остаётся, работать можно
-
-Запуск: двойной клик по ярлыку. Первый запуск ждёт 30-60 секунд (модель читается с диска).
-Сервер слушает http://127.0.0.1:8080 — это же адрес, который использует DeepSeek Harness.
-Одновременно может работать только один пресет: новый запуск сам убивает старый сервер.
-"ОСТАНОВИТЬ сервер" — выключает модель.
+Usage: double-click any shortcut to launch the server at http://127.0.0.1:8080 (OpenAI /v1 API).
+Only one preset runs at a time; launching a new shortcut stops any running llama-server.exe first.
+Use "STOP llama-modchip server" to shut down the active engine cleanly.
 "@
-Set-Content -LiteralPath (Join-Path $Root "ЧИТАЙ МЕНЯ.txt") -Value $readme -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $Root "README.txt") -Value $readme -Encoding UTF8
 
 Write-Host "Preset tree created:" -ForegroundColor Green
 Get-ChildItem $Root -Recurse | Where-Object { $_.Extension -in '.lnk', '.txt' } | ForEach-Object { Write-Host ("  " + $_.FullName.Replace($Root, "")) }

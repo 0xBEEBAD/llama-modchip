@@ -14,7 +14,10 @@ import torch
 import time
 import os
 from typing import List, Optional, Tuple
-from routecrack.predictor import Predictor
+try:
+    from .predictor import Predictor
+except ImportError:
+    from speculative.predictor import Predictor
 
 
 def crop_kv(past_kv, discard):

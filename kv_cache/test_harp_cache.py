@@ -6,11 +6,15 @@ Validates lookup latency (<0.01 ms), zero-copy POSIX shm, and zero-prefill agent
 
 import time
 import os
+import stat
 import random
+import unittest
 try:
     from kv_cache.harp_cache import HARPCacheEngine, hash_token_block, fnv1a_64
 except ImportError:
     from harp_cache import HARPCacheEngine, hash_token_block, fnv1a_64
+
+_UID = getattr(os, "geteuid", getattr(os, "getuid", lambda: 0))()
 
 def test_fnv1a_throughput():
     print("\n--- TEST 1: FNV-64 Hash Cascade Throughput ---")
@@ -28,122 +32,109 @@ def test_fnv1a_throughput():
 
 def test_harp_agentic_prefill_simulation():
     print("\n--- TEST 2: Agentic Prefix Caching & Zero-Prefill Latency ---")
-    engine = HARPCacheEngine(shm_path="/dev/shm/harp_kv_cache_test.bin", max_pages=1024)
-    
-    # 1. Simulate Agent System Prompt (1,536 tokens = 48 pages)
-    system_prompt_tokens = [1000 + (i % 250) for i in range(1536)]
-    
-    # 2. Simulate Tool Schemas (1,024 tokens = 32 pages)
-    tools_tokens = [5000 + (i % 300) for i in range(1024)]
-    
-    # 3. Simulate Static C Source File (module.c, 1,280 tokens = 40 pages)
-    source_tokens = [9000 + (i % 400) for i in range(1280)]
-    
-    # Complete Common Prefix (3,840 tokens = 120 pages)
-    common_prefix = system_prompt_tokens + tools_tokens + source_tokens
-    
-    print(f"[*] Ingesting Common Prefix ({len(common_prefix)} tokens = {len(common_prefix)//32} pages)...")
-    stored = engine.store_prefix(common_prefix)
-    print(f"[+] Ingested {stored} new pages into POSIX shared memory.")
-    
-    # Run 100 simulated turns where user prompt / agent scratchpad changes
-    print("[*] Running 1,000 lookup trials with dynamic query suffixes...")
-    latencies_us = []
-    
-    for turn in range(1000):
-        # Suffix changes every turn (e.g. 150 new tokens of user query / tool output)
-        dynamic_suffix = [30000 + turn*10 + i for i in range(random.randint(50, 200))]
-        turn_prompt = common_prefix + dynamic_suffix
-        
-        t0 = time.perf_counter_ns()
-        cached_count, matched_pages, remaining_suffix = engine.resolve_prefix(turn_prompt)
-        t1 = time.perf_counter_ns()
-        
-        latencies_us.append((t1 - t0) / 1000.0)
-        assert cached_count == len(common_prefix), f"Should match all {len(common_prefix)} prefix tokens"
-        assert len(remaining_suffix) == len(dynamic_suffix), "Remaining suffix should match exactly dynamic tokens"
-    
-    avg_latency_us = sum(latencies_us) / len(latencies_us)
-    min_latency_us = min(latencies_us)
-    p99_latency_us = sorted(latencies_us)[int(0.99 * len(latencies_us))]
-    
-    print(f"[+] LCP Lookup Latency across 1,000 trials:")
-    print(f"    - Min: {min_latency_us:.2f} µs")
-    print(f"    - Avg: {avg_latency_us:.2f} µs  (< 0.03 ms!)")
-    print(f"    - P99: {p99_latency_us:.2f} µs")
-    
-    # Standard CPU pre-fill calculation:
-    # 3,840 tokens on Zen 5 without cache at ~250 tok/s prefill = 15.36 seconds
-    base_prefill_time_s = len(common_prefix) / 250.0
-    saved_time_s = base_prefill_time_s - (avg_latency_us / 1_000_000.0)
-    
-    print(f"\n[!] PRE-FILL LATENCY COMPARISON ON CPU (AMD Ryzen 9 9955HX):")
-    print(f"    - Without HARP-Cache (Standard Re-evaluation): {base_prefill_time_s:.2f} seconds")
-    print(f"    - With HARP-Cache (Zero-Copy SHM Lookup):       {avg_latency_us / 1000.0:.4f} ms")
-    print(f"    - Prefill Acceleration:                         {base_prefill_time_s / (avg_latency_us / 1_000_000.0):,.0f}x Speedup")
-    print(f"    - CPU Time Saved per Agentic Turn:              {saved_time_s:.2f} seconds")
-    
-    stats = engine.stats()
-    print(f"\n[+] HARP Engine Diagnostics: {stats}")
-    engine.close()
-    if os.path.exists("/dev/shm/harp_kv_cache_test.bin"):
-        os.remove("/dev/shm/harp_kv_cache_test.bin")
-    print("[+] TEST 2 PASSED: 100% Prefix Hit & Zero-Prefill Verified.")
+    test_shm = f"/dev/shm/harp_kv_cache_test_{_UID}.bin"
+    engine = HARPCacheEngine(shm_path=test_shm, max_pages=1024)
+    try:
+        if engine.shm_active:
+            st = os.stat(test_shm)
+            assert stat.S_IMODE(st.st_mode) == 0o600, f"Expected 0600 permissions, got {oct(stat.S_IMODE(st.st_mode))}"
+            assert st.st_uid == _UID
+        # 1. Simulate Agent System Prompt (1,536 tokens = 48 pages)
+        system_prompt_tokens = [1000 + (i % 250) for i in range(1536)]
+        # 2. Simulate Tool Schemas (1,024 tokens = 32 pages)
+        tools_tokens = [5000 + (i % 300) for i in range(1024)]
+        # 3. Simulate Static C Source File (module.c, 1,280 tokens = 40 pages)
+        source_tokens = [9000 + (i % 400) for i in range(1280)]
+        # Complete Common Prefix (3,840 tokens = 120 pages)
+        common_prefix = system_prompt_tokens + tools_tokens + source_tokens
+
+        stored = engine.store_prefix(common_prefix)
+        assert stored > 0
+
+        latencies_us = []
+        for turn in range(1000):
+            dynamic_suffix = [30000 + turn * 10 + i for i in range(random.randint(50, 200))]
+            turn_prompt = common_prefix + dynamic_suffix
+            t0 = time.perf_counter_ns()
+            cached_count, matched_pages, remaining_suffix = engine.resolve_prefix(turn_prompt)
+            t1 = time.perf_counter_ns()
+            latencies_us.append((t1 - t0) / 1000.0)
+            assert cached_count == len(common_prefix), f"Should match all {len(common_prefix)} prefix tokens"
+            assert len(remaining_suffix) == len(dynamic_suffix), "Remaining suffix should match exactly dynamic tokens"
+
+        stats = engine.stats()
+        assert stats["active_pages"] == stored
+    finally:
+        engine.close()
+        if os.path.exists(test_shm):
+            os.remove(test_shm)
 
 def test_radix_intermediate_eviction_and_collision():
     print("\n--- TEST 3: Intermediate Radix Eviction & Hash Collision Safety ---")
-    engine = HARPCacheEngine(shm_path="/dev/shm/harp_kv_cache_test_lru.bin", max_pages=3)
-    p0 = [100 + i for i in range(32)]
-    p1 = [200 + i for i in range(32)]
-    p2 = [300 + i for i in range(32)]
-    p3 = [400 + i for i in range(32)]
+    lru_shm = f"/dev/shm/harp_kv_cache_test_lru_{_UID}.bin"
+    deep_shm = f"/dev/shm/harp_kv_cache_test_deep_{_UID}.bin"
+    engine = HARPCacheEngine(shm_path=lru_shm, max_pages=3)
+    try:
+        p0 = [100 + i for i in range(32)]
+        p1 = [200 + i for i in range(32)]
+        p2 = [300 + i for i in range(32)]
+        p3 = [400 + i for i in range(32)]
 
-    # Store [p0, p1, p2] -> fills all 3 physical pages
-    assert engine.store_prefix(p0 + p1 + p2) == 3
-    h0, h1, h2 = hash_token_block(p0), hash_token_block(p1), hash_token_block(p2)
+        # Store [p0, p1, p2] -> fills all 3 physical pages
+        assert engine.store_prefix(p0 + p1 + p2) == 3
+        h0, h1, h2 = hash_token_block(p0), hash_token_block(p1), hash_token_block(p2)
 
-    # Touch p0 and p2 so p1 (intermediate node) becomes Least Recently Used
-    time.sleep(0.002)
-    engine.hash_to_page[h0].last_accessed = time.time()
-    engine.hash_to_page[h2].last_accessed = time.time()
+        # Touch p0 and p2 so p1 (intermediate node) becomes Least Recently Used
+        time.sleep(0.002)
+        engine.hash_to_page[h0].last_accessed = time.time()
+        engine.hash_to_page[h2].last_accessed = time.time()
 
-    # Storing p3 evicts intermediate page p1; p2 must remain attached in radix_root[h0]["children"][h1]["children"]
-    assert engine.store_prefix(p3) == 1
-    assert engine.radix_root[h0]["children"][h1]["page"] is None, "Evicted intermediate node should set page=None"
-    assert h2 in engine.radix_root[h0]["children"][h1]["children"], "Descendant subtree must not be orphaned"
+        # Storing p3 evicts intermediate page p1; p2 must remain attached in radix_root[h0]["children"][h1]["children"]
+        assert engine.store_prefix(p3) == 1
+        assert engine.radix_root[h0]["children"][h1]["page"] is None, "Evicted intermediate node should set page=None"
+        assert h2 in engine.radix_root[h0]["children"][h1]["children"], "Descendant subtree must not be orphaned"
 
-    # Touch p0 and p2 after p3 so p3 becomes LRU when p1 is re-inserted
-    time.sleep(0.002)
-    engine.hash_to_page[h0].last_accessed = time.time()
-    engine.hash_to_page[h2].last_accessed = time.time()
+        # Touch p0 and p2 after p3 so p3 becomes LRU when p1 is re-inserted
+        time.sleep(0.002)
+        engine.hash_to_page[h0].last_accessed = time.time()
+        engine.hash_to_page[h2].last_accessed = time.time()
 
-    # Re-storing [p0, p1] evicts p3 and reconnects p1 without losing p2 child in Radix Tree
-    engine.store_prefix(p0 + p1)
-    cached, _, _ = engine.resolve_prefix(p0 + p1 + p2)
-    assert cached == 96, f"Expected full 96-token Radix path after reconnecting intermediate node, got {cached}"
-
-    engine.close()
-    if os.path.exists("/dev/shm/harp_kv_cache_test_lru.bin"):
-        os.remove("/dev/shm/harp_kv_cache_test_lru.bin")
+        # Re-storing [p0, p1] evicts p3 and reconnects p1 without losing p2 child in Radix Tree
+        engine.store_prefix(p0 + p1)
+        cached, _, _ = engine.resolve_prefix(p0 + p1 + p2)
+        assert cached == 96, f"Expected full 96-token Radix path after reconnecting intermediate node, got {cached}"
+    finally:
+        engine.close()
+        if os.path.exists(lru_shm):
+            os.remove(lru_shm)
 
     # Verify deep (>1,100 pages) prefix chain eviction does not hit RecursionError
-    deep_engine = HARPCacheEngine(shm_path="/dev/shm/harp_kv_cache_test_deep.bin", max_pages=1100)
-    deep_tokens = [10000 + i for i in range(1150 * 32)]
-    deep_engine.store_prefix(deep_tokens)
-    assert len(deep_engine.hash_to_page) == 1100
-    assert deep_engine.evictions == 50
-    deep_engine.close()
-    if os.path.exists("/dev/shm/harp_kv_cache_test_deep.bin"):
-        os.remove("/dev/shm/harp_kv_cache_test_deep.bin")
-    print("[+] TEST 3 PASSED: Intermediate & Deep-Chain Radix Eviction Verified.")
+    deep_engine = HARPCacheEngine(shm_path=deep_shm, max_pages=1100)
+    try:
+        deep_tokens = [10000 + i for i in range(1150 * 32)]
+        deep_engine.store_prefix(deep_tokens)
+        assert len(deep_engine.hash_to_page) == 1100
+        assert deep_engine.evictions == 50
+    finally:
+        deep_engine.close()
+        if os.path.exists(deep_shm):
+            os.remove(deep_shm)
+
+
+class TestHARPCache(unittest.TestCase):
+    def test_fnv1a_throughput(self):
+        test_fnv1a_throughput()
+
+    def test_harp_agentic_prefill_simulation(self):
+        test_harp_agentic_prefill_simulation()
+
+    def test_radix_intermediate_eviction_and_collision(self):
+        test_radix_intermediate_eviction_and_collision()
+
+    def test_default_shm_path_is_per_uid(self):
+        default_path = HARPCacheEngine.default_shm_path()
+        self.assertTrue(default_path.endswith(f"_{_UID}.bin"), default_path)
+
 
 if __name__ == "__main__":
-    print("=" * 80)
-    print("🚀 ROUTECRACK-KV PHASE 2: HARP-CACHE ENGINE VALIDATION SUITE")
-    print("=" * 80)
-    test_fnv1a_throughput()
-    test_harp_agentic_prefill_simulation()
-    test_radix_intermediate_eviction_and_collision()
-    print("\n" + "=" * 80)
-    print("🎉 ALL PHASE 1 & PHASE 2 TESTS COMPLETED SUCCESSFULLY!")
-    print("=" * 80)
+    unittest.main()

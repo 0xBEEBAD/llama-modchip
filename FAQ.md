@@ -98,8 +98,8 @@ Yes. **Nemotron 3.5 30B-A3B** works well with **Tensor-Role Offloading** (`--n-c
 3. **Verified AMD Vulkan/RADV Community Benchmark (`Ryzen 9 7945HX3D` + `Radeon RX 9070 XT 16GB`)**:
    - **`Fractal-MXFP4` (`15.95 GiB` file / `~15.2 GB` active)**: **`75.1 tok/s` (new code) / `80.8 tok/s` (refactor)** at `256K` context (`--n-cpu-moe 30`).
    - **`Q4_0` (`17.60 GiB`)**: **`69.7 tok/s` (new code) / `76.2 tok/s` (refactor)**.
-   - **`Fractal-64` (`Q2_0 = 42`, `14.36 GiB`, Pure CPU)**: **`44.2 tok/s` (new code) / `45.1 tok/s` (refactor)** on pure CPU.
-4. **Backend Compatibility Across `v3.0` Checkpoints (`Standard ggml` vs `Fractal-64 = 44` vs `LUT-VQ3-64 = 45`)**:
+   - **`Fractal-64` (`GGML_TYPE_FRACTAL_64 = 44`, `14.36 GiB`, Pure CPU)**: **`44.2 tok/s` (new code) / `45.1 tok/s` (refactor)** on pure CPU.
+4. **Backend Compatibility Across `v3.1.0` Checkpoints (`Standard ggml` vs `Fractal-64 = 44` vs `LUT-VQ3-64 = 45`)**:
    > [!IMPORTANT]
    > - **For Universal CPU, Apple Metal, CUDA, Vulkan & `LM Studio` (`0` Custom Types)**: Use **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** (`16 GB` tier), **`Qwen3.8-Flash-Next-MaxQ-32GB`** (`32 GB` tier), **`Qwen3.8-Flash-Next-MaxQ-64GB`** (`64 GB` tier), or **`DeepSeek-V4-Flash-0731-MaxQ-v4`** (`64 GB` 284B tier) — all four use **100% standard `ggml` tensor types (`<= 42`)** while keeping upstream `GGML_TYPE_Q2_0 = 42` (`18 B / 64 W` = `2.25 bpw`, `QK2_0 = 64`) and `GGML_TYPE_F8_E4M3 = 43` untouched.
    > - **For Apple Silicon Metal (`Fractal-64`, `GGML_TYPE_FRACTAL_64 = 44` in `v3.0+`)**: Unified `patches/llama-modchip-v3.1.patch` includes register-tiled Metal shaders for `FRACTAL_64` (`57.65 tok/s` M1 Max, `78.60 tok/s` M3 Max, `72.5 tok/s` M4 Max).
@@ -187,7 +187,7 @@ Applying the **single-token ($N=1$, GEMV) bandwidth formula** (`Throughput × Ac
 ## Q14: How does the 4-Level Register (`ZMM` AVX-512BW/VBMI) + L1D + L2 + L3 Tiler accelerate `DeepSeek-V4-Flash 284B` prefill (`41.1–44.0 tok/s` cold, `44.36 tok/s` warm prefix)?
 
 1. **Bottleneck Breakdown**:
-   - In a 284B MoE (`13.17B` active per token), prompt prefill ($N > 1$) and multi-turn agentic turns spend ~85% of wall-clock time inside dense (`Q2_0`, `VQ3_0`, `Q5_K`, `Q6_K`) and sparse MoE (`IQ1_S`, `IQ2_XXS`, `IQ1_M`) matrix-matrix contractions, and ~15% inside `FLASH_ATTN_EXT`, `quantize_row_q8_K`, `RMS_NORM`, and `DSV4_HC_PRE/POST`.
+   - In a 284B MoE (`13.17B` active per token), prompt prefill ($N > 1$) and multi-turn agentic turns spend ~85% of wall-clock time inside dense (`Q4_K`, `Q5_K`, `Q6_K`, `FRACTAL_64`, `VQ3_64`) and sparse MoE (`IQ1_S`, `IQ2_XXS`, `IQ1_M`) matrix-matrix contractions, and ~15% inside `FLASH_ATTN_EXT`, `quantize_row_q8_K`, `RMS_NORM`, and `DSV4_HC_PRE/POST`.
 2. **4-Level Co-Design**:
    - **Level 0 (`ZMM` Register-Stationary AVX-512BW/VBMI `_1x8`, `_1x4`, `_1x3`, `_1x2`, `1x1`)**: Unpacks each weight block **once in `ZMM` registers** across up to `8` token columns (`64` weights per SIMD instruction).
    - **Levels 1 & 2 (L1D `{8, 4, 3, 2}` Zero-Remainder Stepping + L2 `128`-Row Tiling + Cache-Aligned MoE Dynamic Queue)**: Decomposes any column count $M \ge 2$ into $\{8, 4, 3, 2\}$ ($5 = 3+2$, $9 = 4+3+2$), eliminating `1x1` fallback across ragged 256-expert MoE buckets (`MUL_MAT_ID`).
@@ -207,12 +207,13 @@ Applying the **single-token ($N=1$, GEMV) bandwidth formula** (`Throughput × Ac
 
 ---
 
-## Q16: Why does `llama-modchip v3.0` default to `-t $((N_CORES - 1)) --poll 0`, `RC_TABLES_DIR=/nonexistent` on non-Nemotron models, and `temp=0.6` on `MaxQ-32GB`?
+## Q16: Why does `llama-modchip v3.1.0` default to `--spec-type routecrack2`, `-t $((N_CORES - 1)) --poll 0`, `RC_TABLES_DIR=/nonexistent` on non-Nemotron models, and `temp=0.6` on `MaxQ-32GB`?
 
 1. **Eliminating Barrier Convoy Stalls (`-t $((N_CORES - 1)) -tb $((N_CORES - 1)) --poll 0 --poll-batch 0`)**:
-   - When `llama-server` spawns `N` busy-polling (`--poll 50`) worker threads across `N` available cores, the HTTP/SSE/OS threads share a core with one worker thread, delaying every `ggml` graph barrier across all `N` threads (`+25.9%` `pp512` and `+31.3%` `tg128` recovered immediately by switching from `-t 16 --poll 50` to `-t 15 -tb 15 --poll 0 --poll-batch 0`). Combined with `v3.0` SIMD/GDN/repack optimizations, `draft-mtp` reaches **`12.66 t/s`** (`+72.8%`) on `MaxQ-64GB` and **`11.45–14.29 t/s`** (`+21.1%`) on `MaxQ-32GB`.
-2. **Vocabulary Isolation (`RC_TABLES_DIR=/nonexistent`) & `draft-mtp` vs. `Stockfish-PVS v2`**:
-   - When `RC_TABLES_DIR` is unset, `common/ngram-map.cpp` checks `./workspace/routecrack`. Setting `RC_TABLES_DIR=/nonexistent` whenever serving `Qwen3.8` (`248K` vocab) or `DeepSeek-V4` guarantees Nemotron's `131K` offline tables are never loaded, running `Stockfish-PVS v2` in clean 32-bit online session mode. Built-in `draft-mtp` wins cold single-turn `rep 0` `tg128` on `6 / 6` prompts (`93.0%` accept on `MaxQ-64GB`), while `Stockfish-PVS v2` (`--spec-type ngram-simple --spec-ngram-simple-size-n 3 --spec-ngram-simple-size-m 3 --spec-ngram-simple-min-hits 1`) delivers `10.58–12.82 t/s` (`1.67×–1.87×`) cold `rep 0` speedup on source-in-context refactoring with zero draft-model weights.
+   - When `llama-server` spawns `N` busy-polling (`--poll 50`) worker threads across `N` available cores, the HTTP/SSE/OS threads share a core with one worker thread, delaying every `ggml` graph barrier across all `N` threads (`+25.9%` `pp512` and `+31.3%` `tg128` recovered immediately by switching from `-t 16 --poll 50` to `-t 15 -tb 15 --poll 0 --poll-batch 0`).
+2. **Unified `RouteCrack 2.0` (`--spec-type routecrack2`) & Vocabulary Isolation (`RC_TABLES_DIR=/nonexistent`)**:
+   - In `v3.1.0`, **`--spec-type routecrack2`** replaces separate `draft-mtp` and `ngram-map-k` defaults across all three families by combining NextN MTP / `RCPredictor`, O(1) Two-Zone 40K Suffix bypass (`< 250 ns`), and `192 KB` Stockfish-PVS + 28-bit Tagged Mode Refutation under an `832 B` L1 Micro-Arbiter (`15.88 avg / 21.98 peak tok/s` on `Qwen3.8`, `+14.5%` over `v3.0 draft-mtp`; `7.79 avg / 12.31 peak` on `DS-V4 284B`; `28.20 avg / 42.18 peak` on `Nemotron-30B`). Setting `RC_TABLES_DIR=/nonexistent` whenever serving `Qwen3.8` (`248K` vocab) or `DeepSeek-V4` guarantees Nemotron's `131K` offline tables are never loaded.
+   - To install companion tools (`llama-bench`, `llama-perplexity`, `llama-quantize`) alongside `llama-server` and `llama-cli`, pass `./modchip download-bin --all-tools`.
 3. **`MaxQ-32GB` Sampling & `<think>` Token Budget**:
    - Because `MaxQ-32GB` compresses trunk weights to `1.63 bpw`, pure greedy `temp=0` decoding can enter repetition loops on open-ended reasoning (`2/8` pass at `temp=0`). `./modchip` sets `temperature=0.6`, `top_p=0.95`, `top_k=20`, `presence_penalty=0.2`, `repeat_penalty=1.05` by default on `MaxQ-32GB`. When enabling `<think>` mode on `Qwen3.8`, set `max_tokens >= 16384` (or `enable_thinking=False` for `<= 4096` caps).
 

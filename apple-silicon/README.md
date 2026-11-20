@@ -8,7 +8,7 @@ The upstream optimizations are for one AMD Zen 5 CPU without a GPU. On a Mac, th
 work, and the memory bandwidth is 273 GB/s (not approximately 75 GB/s). Thus most of the upstream
 changes do not apply, and the limit is the size of the memory, not the bandwidth. For the Q4_0 file
 measured below, stock llama.cpp is sufficient and no patch is necessary. This does not hold for the
-Fractal-64 (`Q2_0`) GGUFs, see the next section.
+Fractal-64 (`GGML_TYPE_FRACTAL_64 = 44`) or `LUT-VQ3-64` (`GGML_TYPE_VQ3_64 = 45`) GGUFs, or for `RouteCrack 2.0`; see the next section.
 
 ## Custom `FRACTAL_64` / `VQ3_64` & Unified `v3.1.0` Engine (`RouteCrack 2.0`)
 
@@ -63,7 +63,7 @@ request). In an agent loop, the prompt cache prevents most cold prefills (see be
 | Mode | Code edit (copy a file with one change) | New code | Text |
 | :--- | ---: | ---: | ---: |
 | none | 55.3 tok/s | 56.2 tok/s | 56.3 tok/s |
-| **`ngram-mod`** (default of `run-server.sh`) | **154.6 tok/s** (93% accepted) | 56.1 tok/s | 56.1 tok/s |
+| **`ngram-mod`** (stock fallback when `routecrack2` is unavailable; `run-server.sh` defaults to `routecrack2` on patched builds) | **154.6 tok/s** (93% accepted) | 56.1 tok/s | 56.1 tok/s |
 | `ngram-simple`, upstream settings (n=4, m=5) | 89.7 tok/s | 54.5 tok/s | 55.4 tok/s |
 | `draft-mtp`, 1 draft token (*) | 75.2 tok/s | 61.7 tok/s | 63.7 tok/s |
 | `draft-mtp`, 3 draft tokens (*) | 66.2 tok/s | 46.7 tok/s | 27.4 tok/s |
@@ -214,12 +214,11 @@ apps to swap (1.7–3.7 GiB in the tests) and memory pressure is high, so these 
 - **System prompt.** The upstream prompt describes the Linux setup of the author. `GATEWAY_SYSTEM_PROMPT`
   now selects the file, and `run-gateway.sh` uses `system_prompt.macos.md`.
 
-The gateway still has these upstream behaviours. Know them before you use it:
+The gateway has these configurable behaviours. Know them before you use it:
 
-- It changes each `Write` call into a `Bash` command (`echo '<base64>' | base64 -d > <path>`). Thus
-  Claude Code asks for Bash permission and shows no file diff.
-- It allows a maximum of 2 tool calls per turn and limits `max_tokens` to 4096.
-- It replaces the full Claude Code system prompt with the short gateway prompt.
+- `Write` -> `Bash` rewriting (`echo '<base64>' | base64 -d > <path>`) is **disabled by default** and opt-in only via `MODCHIP_EXPERIMENTAL_BASH_WRITE=1`.
+- It allows a maximum of 2 tool calls per turn and caps default `no`-think `max_tokens` to 4096 (up to 16384 in `max` thinking mode).
+- It preserves client-supplied `system` prompts by default; set `MODCHIP_OVERRIDE_SYSTEM_PROMPT=1` to substitute `GATEWAY_SYSTEM_PROMPT`.
 
 ## DeepSeek-V4-Flash 284B on Apple Silicon (M5 Max 64 GB)
 

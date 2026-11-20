@@ -11,15 +11,17 @@ Architectural Role & Footprint Clarification:
    immutable multi-turn agent prefixes (system prompt, 40 tool schemas, conversation history)
    in < 1 ms and compute zero-prefill hit telemetry.
 2. Native `llama-server` Tensor Persistence:
-   Physical Mamba-2 recurrent states (`conv1d` + SSM state tensors across 46 layers) and
+   Physical Mamba-2 recurrent states (`conv1d` + SSM state tensors across 23 layers) and
    quantized GQA KV cache tensors (`Q8_0/Q4_0` across 6 layers) are persisted and restored
    natively in C++ by `llama-server --slot-save-path /dev/shm --cache-reuse 256`
    (`POST /slots/0?action=restore`, restoring 22,245 tokens / 85 MB in ~18.9 ms).
    When used standalone (or in `benchmarks/`), `HARPCacheEngine` allocates a bounded
-   `/dev/shm` arena (`max_pages * PAGE_KV_BYTES`) with strict LRU page-ID reuse.
+   per-UID `/dev/shm` arena (`max_pages * PAGE_KV_BYTES`) with `O_NOFOLLOW` + `0o600`
+   permissions and strict LRU page-ID reuse.
 """
 
 import os
+import stat
 import sys
 import time
 import mmap
@@ -83,10 +85,14 @@ class HARPCacheEngine:
     PAGE_TOKENS = 32                    # 32 tokens per physical memory page
     PAGE_KV_BYTES = 32 * 196608 // 48   # Reference KV footprint per 32-token page (~131 KB)
     MAX_PAGES = 4096                    # 4096 pages = 131,072 tokens capacity (~512 MB shm)
-    SHM_FILE_PATH = "/dev/shm/harp_kv_cache.bin"
 
-    def __init__(self, shm_path: str = SHM_FILE_PATH, max_pages: int = MAX_PAGES):
-        self.shm_path = shm_path
+    @staticmethod
+    def default_shm_path() -> str:
+        euid = getattr(os, "geteuid", getattr(os, "getuid", lambda: 0))()
+        return f"/dev/shm/harp_kv_cache_{euid}.bin"
+
+    def __init__(self, shm_path: Optional[str] = None, max_pages: int = MAX_PAGES):
+        self.shm_path = shm_path or self.default_shm_path()
         self.max_pages = max(1, int(max_pages))
         self.total_shm_bytes = self.max_pages * self.PAGE_KV_BYTES
         self.lock = threading.Lock()
@@ -104,14 +110,22 @@ class HARPCacheEngine:
         self._init_shm()
 
     def _init_shm(self):
-        """Initializes POSIX shared memory backing file with zero-copy mmap."""
+        """Initializes per-UID POSIX shared memory backing file safely (O_NOFOLLOW + 0600) with zero-copy mmap."""
+        fd = -1
+        self.shm_file = None
         try:
-            if not os.path.exists(self.shm_path) or os.path.getsize(self.shm_path) != self.total_shm_bytes:
-                with open(self.shm_path, "wb") as f:
-                    f.seek(self.total_shm_bytes - 1)
-                    f.write(b"\0")
+            euid = getattr(os, "geteuid", getattr(os, "getuid", lambda: 0))()
+            open_flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(self.shm_path, open_flags, 0o600)
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode) or st.st_uid != euid:
+                raise PermissionError(f"Unsafe SHM backing file: {self.shm_path}")
+            os.fchmod(fd, 0o600)
+            if st.st_size != self.total_shm_bytes:
+                os.ftruncate(fd, self.total_shm_bytes)
 
-            self.shm_file = open(self.shm_path, "r+b")
+            self.shm_file = os.fdopen(fd, "r+b")
+            fd = -1
             self.shm_mmap = mmap.mmap(
                 self.shm_file.fileno(),
                 self.total_shm_bytes,
@@ -120,6 +134,16 @@ class HARPCacheEngine:
             )
             self.shm_active = True
         except Exception:
+            if fd >= 0:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if self.shm_file is not None and not self.shm_file.closed:
+                try:
+                    self.shm_file.close()
+                except OSError:
+                    pass
             # Fallback to bounded anonymous heap buffer if /dev/shm is restricted
             self.shm_mmap = bytearray(self.total_shm_bytes)
             self.shm_active = False

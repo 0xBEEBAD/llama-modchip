@@ -40,16 +40,17 @@ body:
     attributes:
       label: "Model / Tool Tested"
       options:
-        - "DeepSeek-V4-Flash-0731-MaxQ-Fractal (284.33B Total / 13.17B Active, 56.93 GiB — Aligned Default 284B)"
-        - "DeepSeek-V4-Flash-0731-VQ3 (284.33B Total / 13.17B Active, 56.40 GiB)"
-        - "DeepSeek-V4-Flash-0731-Fractal (284.33B Total / 13.17B Active, 56.57 GiB)"
-        - "DeepSeek-V4-Flash-0731-Abliterated-Fractal (284.33B Total / 13.17B Active, 56.93 GiB — Opt-In Uncensored)"
-        - "NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30.2B Total / 3.0B Active, 13.30 GiB — Aligned Default 30B)"
-        - "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30.2B Total / 3.0B Active, 14.36 GiB)"
-        - "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-MXFP4 (15.95 GiB)"
-        - "NVIDIA-Nemotron-3.5-30B-A3B-Q4_0 (17.60 GiB)"
+        - "Qwen3.8-Flash-Next-MaxQ-64GB (176.5B Total / 5B Active, 53.99 GiB — Aligned Flagship 64GB)"
+        - "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (v3.0-r2 Heretic-2, 53.99 GiB — Opt-In Uncensored)"
+        - "Qwen3.8-Flash-Next-MaxQ-32GB (176.5B Total / 5B Active, 35.71 GiB — Aligned 32GB Laptop)"
+        - "Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (v3.0-r2 Heretic-2, 35.71 GiB — Opt-In Uncensored)"
+        - "DeepSeek-V4-Flash-0731-MaxQ-v4 (284.33B Total / 13.17B Active, 57.99 GiB — 64GB Standard ggml)"
+        - "NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30.2B Total / 3.0B Active, 13.30 GiB — 16GB AVX-512 Turbo)"
+        - "NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30.2B Total / 3.0B Active, 13.39 GiB — 16GB Standard ggml)"
         - "NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (13.30 GiB — Opt-In Uncensored)"
-        - "Qwen3-30B-A3B / Qwen3-14B"
+        - "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (14.36 GiB) / Fractal-MXFP4 (15.95 GiB)"
+        - "NVIDIA-Nemotron-3.5-30B-A3B-Q4_0 (17.60 GiB)"
+        - "Qwen3-30B-A3B / Qwen3-14B (Hybrid GPU+CPU)"
         - "2-Second CPU Readiness Check (check_cpu_readiness.py)"
     validations:
       required: true

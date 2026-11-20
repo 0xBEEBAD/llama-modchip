@@ -13,14 +13,16 @@
 #
 # Do not use --n-cpu-moe: it takes layers 0..N-1, and with those on the CPU decode is 13.6 tok/s
 # (--n-cpu-moe 4) instead of 27.0. Why is not established; see results/dsv4-m5max.md.
-# Speculative decoding (ngram-mod) is slower on this model.
+# Default SPEC=routecrack2 uses the RouteCrack 2.0 L1 Micro-Arbiter (set SPEC=none if measuring pure n=1 decode).
 #
 # Environment: LLAMA_DIR, MODEL, PORT (8789), CTX (32768), THREADS (12; measured best, 18 drops to 4.1 tok/s).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "${LLAMA_DIR:-}" ]]; then
-    if [[ -x "$HERE/../workspace/llama.cpp-v3/build/bin/llama-server" ]]; then
+    if [[ -x "$HERE/../workspace/llama.cpp/build/bin/llama-server" ]]; then
+        LLAMA_DIR="$HERE/../workspace/llama.cpp/build"
+    elif [[ -x "$HERE/../workspace/llama.cpp-v3/build/bin/llama-server" ]]; then
         LLAMA_DIR="$HERE/../workspace/llama.cpp-v3/build"
     elif [[ -x "$HERE/../llama.cpp/build/bin/llama-server" ]]; then
         LLAMA_DIR="$HERE/../llama.cpp/build"
@@ -71,6 +73,7 @@ exec "$LLAMA_DIR/bin/llama-server" \
     --cors-origins localhost \
     --ctx-size "$CTX" \
     --flash-attn on \
+    -ctk q8_0 -ctv q8_0 \
     --n-gpu-layers 99 \
     --override-tensor "blk\.(${cpu_layers})\.ffn_.*_exps\.=CPU" \
     --fit off \

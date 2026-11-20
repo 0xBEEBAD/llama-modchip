@@ -4,7 +4,7 @@
 # ==============================================================================
 # Usage:
 #   ./modchip setup [args]          # Install unified v3.1.0 engine & select 16GB/32GB/64GB GGUF
-#   ./modchip download-bin [dir]    # Download CPU-matched Linux x86_64 v3.1.0 binary (-avx512 or -avx2)
+#   ./modchip download-bin [--all-tools] [dir]  # Download CPU-matched Linux x86_64 v3.1.0 binary (--all-tools adds bench/perplexity/quantize)
 #   ./modchip start [model.gguf]    # Start v3.1.0 CPU/Hybrid Server + Web UI Gateway in background
 #   ./modchip chat [-p "prompt"]    # Interactive terminal chat with live tok/s & RouteCrack 2.0 telemetry
 #   ./modchip bench                 # Run 2-stage speed test & print shareable CPU scorecard
@@ -551,7 +551,7 @@ cmd_quantize() {
     fi
     echo -e "${CYAN}[i] Pre-quantized MaxQ v3.1.0 checkpoints (16 GB / 32 GB / 64 GB) are distributed directly on Hugging Face:${RESET}"
     echo -e "    Run ${BOLD}./modchip setup${RESET} to download & verify any Aligned or Abliterated checkpoint."
-    echo -e "    For standard GGUF quantization via llama-quantize, install binaries with ${BOLD}./modchip download-bin${RESET}."
+    echo -e "    For standard GGUF quantization via llama-quantize, install all binaries with ${BOLD}./modchip download-bin --all-tools${RESET}."
 }
 
 cmd_claude() {
@@ -573,13 +573,13 @@ cmd_claude() {
     if [[ "$raw_model" == *[Qq]wen3.8* || "$raw_model" == *[Qq]wen38* ]]; then
         if [[ "$raw_model" == *32[Gg][Bb]* && "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · +0.32% dPPL · RouteCrack 2.0)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB + Lazy PLE · v3.0-r2 Heretic-2 · 0.0818 KLD + blk.48 MTP · RouteCrack 2.0)"
         elif [[ "$raw_model" == *32[Gg][Bb]* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-32GB"
             model_banner="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB + Lazy PLE · RouteCrack 2.0)"
         elif [[ "$raw_model" == *[Aa]blit* ]]; then
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated"
-            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · +0.18% dPPL · RouteCrack 2.0)"
+            model_banner="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB Full-RAM · v3.0-r2 Heretic-2 · 0.0818 KLD + blk.48 MTP · RouteCrack 2.0)"
         else
             model_id="Qwen3.8-Flash-Next-MaxQ-64GB"
             model_banner="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB Full-RAM · RouteCrack 2.0)"
@@ -639,7 +639,30 @@ cmd_claude() {
 }
 
 cmd_download_bin() {
-    local dest_dir="${1:-${WORKSPACE_DIR}/bin}"
+    local dest_dir="${WORKSPACE_DIR}/bin"
+    local all_tools="${MODCHIP_ALL_TOOLS:-0}"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all-tools|--all)
+                all_tools=1
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: ./modchip download-bin [--all-tools] [dest_dir]"
+                echo "  --all-tools   Also download llama-bench, llama-perplexity, and llama-quantize"
+                echo "                (equivalent to MODCHIP_ALL_TOOLS=1)"
+                return 0
+                ;;
+            -*)
+                echo -e "${YELLOW}[!] Unknown option for download-bin: $1${RESET}" >&2
+                exit 1
+                ;;
+            *)
+                dest_dir="$1"
+                shift
+                ;;
+        esac
+    done
     mkdir -p "$dest_dir"
     if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
         echo -e "${YELLOW}[!] Prebuilt Linux x86_64 binaries do not match $(uname -s)/$(uname -m); run './modchip setup' to build natively.${RESET}"
@@ -668,7 +691,9 @@ cmd_download_bin() {
     local cli_asset="llama-cli-modchip-linux-x86_64-${isa_suffix}"
     local base_url="https://github.com/synchopate/llama-modchip/releases/download/v3.1.0"
     local fallback_url="https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main"
-    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.1.0 ${srv_asset} & ${cli_asset} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
+    local tools_msg="${srv_asset} & ${cli_asset}"
+    [[ "$all_tools" == "1" ]] && tools_msg="${srv_asset}, ${cli_asset}, llama-bench, llama-perplexity & llama-quantize"
+    echo -e "${CYAN}[*] CPUID detected '${isa_suffix}' ISA — downloading portable v3.1.0 ${tools_msg} (static libgomp/libstdc++, GLIBC <= 2.30)...${RESET}"
     curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${base_url}/${srv_asset}" \
         || curl -fL --progress-bar -o "${dest_dir}/${srv_asset}.part" "${fallback_url}/${srv_asset}"
     local actual_srv_sha
@@ -690,15 +715,17 @@ cmd_download_bin() {
 
     local pair
     for pair in \
-        "${cli_asset}:${cli_sha256}:llama-cli-modchip-linux-x86_64" \
-        "llama-bench-modchip-linux-x86_64-${isa_suffix}:${bnc_sha256}:llama-bench" \
-        "llama-perplexity-modchip-linux-x86_64-${isa_suffix}:${ppl_sha256}:llama-perplexity" \
-        "llama-quantize-modchip-linux-x86_64-${isa_suffix}:${qnt_sha256}:llama-quantize"; do
+        "${cli_asset}:${cli_sha256}:llama-cli-modchip-linux-x86_64:llama-cli" \
+        "llama-bench-modchip-linux-x86_64-${isa_suffix}:${bnc_sha256}:llama-bench:llama-bench-modchip-linux-x86_64" \
+        "llama-perplexity-modchip-linux-x86_64-${isa_suffix}:${ppl_sha256}:llama-perplexity:llama-perplexity-modchip-linux-x86_64" \
+        "llama-quantize-modchip-linux-x86_64-${isa_suffix}:${qnt_sha256}:llama-quantize:llama-quantize-modchip-linux-x86_64"; do
         local asset_name="${pair%%:*}"
         local rest="${pair#*:}"
         local exp_sha="${rest%%:*}"
-        local link_name="${rest#*:}"
-        if [[ "$link_name" != "llama-cli-modchip-linux-x86_64" && "${MODCHIP_ALL_TOOLS:-0}" != "1" ]]; then
+        rest="${rest#*:}"
+        local link_name="${rest%%:*}"
+        local alt_link="${rest#*:}"
+        if [[ "$link_name" != "llama-cli-modchip-linux-x86_64" && "$all_tools" != "1" ]]; then
             continue
         fi
         if curl -fL --progress-bar -o "${dest_dir}/${asset_name}.part" "${base_url}/${asset_name}" \
@@ -709,12 +736,24 @@ cmd_download_bin() {
                 chmod +x "${dest_dir}/${asset_name}.part"
                 mv -f "${dest_dir}/${asset_name}.part" "${dest_dir}/${asset_name}"
                 ln -sf "${asset_name}" "${dest_dir}/${link_name}"
+                [[ -n "$alt_link" ]] && ln -sf "${asset_name}" "${dest_dir}/${alt_link}"
             else
+                echo -e "${YELLOW}[!] SHA-256 mismatch on ${asset_name} (expected ${exp_sha}, got ${got_sha}); removed.${RESET}" >&2
                 rm -f "${dest_dir}/${asset_name}.part"
+                exit 1
             fi
+        else
+            echo -e "${YELLOW}[!] Failed to download ${asset_name} from both GitHub Release and Hugging Face mirror.${RESET}" >&2
+            rm -f "${dest_dir}/${asset_name}.part"
+            exit 1
         fi
     done
     echo -e "${GREEN}[✓] Installed & verified ${dest_dir}/${srv_asset} (v3.1.0 SHA-256 + --version OK)${RESET}"
+    if [[ "$all_tools" == "1" ]]; then
+        echo -e "${GREEN}[✓] Companion tools ready in ${dest_dir}: llama-cli, llama-bench, llama-perplexity, llama-quantize${RESET}"
+    else
+        echo -e "${CYAN}[i] Tip: Pass '--all-tools' to also install llama-bench, llama-perplexity, and llama-quantize.${RESET}"
+    fi
 }
 
 cmd_checksums() {
@@ -735,12 +774,19 @@ cmd_checksums() {
     printf '%s  %s\n' "$NEMOTRON_VQ3_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf (14,282,559,040 B · nemotron-vq3 · types 44/45)"
     printf '%s  %s\n' "$NEMOTRON_FRACTAL_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf (15,420,034,624 B · nemotron-fractal · type 44)"
     printf '%s  %s\n' "$NEMOTRON_ABLIT_SHA256" "NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf (14,282,559,488 B · nemotron-ablit · types 44/45)"
-    echo "# Portable llama-modchip v3.1.0 Linux x86_64 Binaries & Patch (GLIBC <= 2.30)"
-    printf '%s  %s\n' "796b6d3c3659bb3b96910b9de8650b67e6bb93455b055a25cd7148a4bd39b57b" "patches/llama-modchip-v3.1.patch"
+    echo "# Portable llama-modchip v3.1.0 Linux x86_64 Binaries, Tarball & Patch (GLIBC <= 2.30)"
+    printf '%s  %s\n' "abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2" "patches/llama-modchip-v3.1.patch"
     printf '%s  %s\n' "6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6" "llama-server-modchip-linux-x86_64-avx512"
     printf '%s  %s\n' "32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee" "llama-server-modchip-linux-x86_64-avx2 (and llama-server-modchip-linux-x86_64)"
     printf '%s  %s\n' "882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a" "llama-cli-modchip-linux-x86_64-avx512"
     printf '%s  %s\n' "1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2" "llama-cli-modchip-linux-x86_64-avx2 (and llama-cli-modchip-linux-x86_64)"
+    printf '%s  %s\n' "607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f" "llama-bench-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617" "llama-bench-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53" "llama-perplexity-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724" "llama-perplexity-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2" "llama-quantize-modchip-linux-x86_64-avx512"
+    printf '%s  %s\n' "1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576" "llama-quantize-modchip-linux-x86_64-avx2"
+    printf '%s  %s\n' "258c85d4d9a4b4953fb82fbfa18cb0e3dd867b00ccff74e04d9867376c4ea60b" "llama-modchip-v3.1.0-linux-x86_64.tar.gz"
 }
 
 cmd_tui() {

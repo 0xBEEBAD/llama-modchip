@@ -17,17 +17,18 @@
 
 | Optimization Layer | Technique Implemented | Target Bottleneck Solved | Measured Gain (`Zen 5` / `Threadripper` / `Vulkan` / `Metal`) |
 | :--- | :--- | :--- | :--- |
-| **1. Quantization (`LUT-VQ3-64`)** | Block-64 3D Lloyd-Max Vector Quantizer (`GGML_TYPE_VQ3_0 = 43`, `24B / 64w = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B` (`scripts/build_nemotron_vq3.py`) | Reduces MoE `up_exps` footprint by `-33.3%` vs `Q4_0` and `-20.0%` vs `Fractal-64` without scalar 2–3 bit grid loss (`+3.42 dB` SQNR over `Q2_K`) | **`13.30 GiB` shipped Hybrid (`13.08 GiB` full `up_exps` / `16.04 GiB` RSS)**, **`24.18 tok/s` E2E (`+23.7%` vs `Q4_0`)**, **`70.19%` PVS acc**, **`100/100` Gate** |
-| **2. Quantization (`Fractal-64`)** | Block-64 2-Level Hierarchical Non-Linear `Q2_0 = 42` (`30B / 64w = 3.75 bpw`) from `BF16` master weights (`scripts/build_fractal_moe_gguf.sh`) | `1856 × 2688` expert dimensions are not divisible by `256`, causing `Q3_K`/`IQ3_S` in `llama.cpp` to fall back to `Q4_0` | **`17.60 GiB -> 14.36 GiB` (`-6.01 GiB` idle RAM)**, **`+28.0%` CPU decode (`25.02 tok/s`)**, **`78.60 tok/s` M3 Max Metal ([PR #24](https://github.com/synchopate/llama-modchip/pull/24))**, **`100/100` Gate** |
-| **3. Quantization (`Fractal-MXFP4`)** | Asymmetric Block-32 `MXFP4` (`4.25 bpw`) on routed MoE experts + `Q8_0`/`Q4_0` on GQA/SSM backbone + `_MM_HINT_NTA` | Bandwidth bottleneck on CPU & VRAM capacity on `16 GB` GPUs | **`15.95 GiB`**, **`+33.5%` CPU decode (`26.08 tok/s`)**, **`75.1–80.8 tok/s` on AMD Vulkan Hybrid** |
-| **4. SIMD Kernels (`Q2_0` & `VQ3_0`)** | Single-cycle AVX-512 VBMI `VPERMI2B` (`VQ3_0`) and AVX2 variable bit-shifts (`_mm256_sllv_epi32` / `_mm256_srlv_epi32`) fused into `vpmaddwd` (`Q2_0`) | Scalar bit-unpacking overhead in sub-4-bit hierarchical blocks | **`+55%` `Q2_0` kernel speedup** (`86.5 ms -> 55.8 ms` per 10M blocks), register-resident 384-byte `VQ3_0` codebook |
-| **5. Speculative Engine (`Stockfish-PVS v2`)** | `192 KB` L2-resident Zobrist Transposition Tables (`tt5/tt4/tt3` in [`rc_stockfish.h`](../speculative/cpp/rc_stockfish.h)) + 1-Ply Quiescence PVS + `RouteCrack` 8-Level FNV-64 Cascade + Macro Codebook (`M=7`) | 1B neural draft models read `3.0 GB` from DDR5 (`40 ms`) and flush L3 cache | **`48.39 tok/s` avg / `60.40 tok/s` peak** on 16C Zen 5 (`96.4%` acc, `len 6.90`); **`111.62 tok/s` warm** on Threadripper 7985WX |
-| **6. Cache Isolation (`_MM_HINT_NTA`)** | Bidirectional Non-Temporal L3 bypass on cold MoE weights and KV tokens older than `LLAMA_KV_L3_WINDOW=2048` | Streaming `1.4–1.8 GB/tok` of MoE weights evicts hot Mamba-2 state and recent KV tokens from `64 MB` L3 | Keeps `18.4 MB` Mamba-2 state + `4.88 MiB` hot KV window in L3 cache |
-| **7. Virtual Memory (`2MB HugePages`)** | `MADV_HUGEPAGE` on weight mmap + compute arenas + `2MB`-aligned `posix_memalign` | `17.6 GiB` in `4KB` pages = `4.5M` PTEs, thrashing the `3,072`-entry Zen 5 L2 STLB (`14 ms/tok` page-walk stall) | Expands L2 STLB coverage to **`6.14 GB`**, cutting dTLB page-walk latency from `14.0 ms` to **`0.8 ms/tok` (`-99.6%` misses)** |
-| **8. Weight Tile Repacking (`q4_0_8x8`)** | In-memory AVX-512 VNNI (`VPDPBUSD`) / AVX2 interleaved `8×8` matrix tile repacking at model load | Cache-line splits and nibble-unpacking stalls during GEMV/GEMM | **`+19%` raw GEMV throughput** and **`241–306.8 tok/s` (`pp512`) prefill** on 16C Zen 5 |
-| **9. KV Cache (`EAKV + VPI`)** | Entropy-Guided Asymmetric KV (`Q8_0` Keys for RoPE phase precision, `Q4_0` Values) + Virtual Positional Indexing | FP16 KV cache growth and RoPE degradation at `128K–256K` context | Full **`256K` context in `432 MB`**, `100%` passkey needle retrieval |
-| **10. Agentic Loop (`HARP-Cache` Slot-0)** | `/dev/shm` memory-mapped KV + Mamba-2 recurrent state snapshot + SSE Gateway auto-restore | Re-evaluating Claude Code's `22.2K`-token 40-tool system prompt takes `130.8 s` on CPU | **`18.9 ms` warm turn restore** |
-| **11. Dynamic MoE Pruning (`Top-K 6->4`)** | Opt-in norm-preserving dynamic MoE router truncation (`LLAMA_MOE_TOP_K=4` environment variable at server startup) | Reading 6 routed experts per layer on bandwidth-constrained DDR4/DDR5 | **`-33%` routed MoE DRAM traffic** (opt-in boot-time setting; `v2.5.2+` defaults to unpruned `Top-6`) |
+| **1. Quantization (`LUT-VQ3-64`)** | Block-64 3D Lloyd-Max Vector Quantizer (`GGML_TYPE_VQ3_64 = 45`, `24B / 64w = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B` (`patches/llama-modchip-v3.1.patch`) | Reduces MoE `up_exps` footprint by `-33.3%` vs `Q4_0` and `-20.0%` vs `Fractal-64` without scalar 2–3 bit grid loss (`+3.42 dB` SQNR over `Q2_K`) | **`13.30 GiB` shipped Hybrid (`13.08 GiB` full `up_exps` / `16.04 GiB` RSS)**, **`24.18 tok/s` E2E (`+23.7%` vs `Q4_0`)**, **`70.19%` PVS acc**, **`100/100` Gate** |
+| **2. Quantization (`MaxQ-16GB`)** | 100% Donor-Free Standard `ggml` (`max_type = 42`, `0` custom types: `{F32, Q4_0, Q8_0, MXFP4, Q2_0}`) | Universal 16 GB deployment on unmodified upstream `llama.cpp`, Apple Metal, CUDA, Vulkan, and LM Studio | **`13.39 GiB` (`VmHWM = 14.304 GiB <= 15.0 GiB` cgroup)**, **`188.3 tok/s` `pp512`**, **`27.80 tok/s`** refactor (`94.4%` acc), blind `wiki-alt` PPL **`7.31`** |
+| **3. Quantization (`Fractal-64`)** | Block-64 2-Level Hierarchical Non-Linear `GGML_TYPE_FRACTAL_64 = 44` (`30B / 64w = 3.75 bpw`) from `BF16` master weights | `1856 × 2688` expert dimensions are not divisible by `256`, causing `Q3_K`/`IQ3_S` in `llama.cpp` to fall back to `Q4_0` | **`17.60 GiB -> 14.36 GiB` (`-6.01 GiB` idle RAM)**, **`+28.0%` CPU decode (`25.02 tok/s`)**, **`78.60 tok/s` M3 Max Metal ([PR #24](https://github.com/synchopate/llama-modchip/pull/24))**, **`100/100` Gate** |
+| **4. Quantization (`Fractal-MXFP4`)** | Asymmetric Block-32 `MXFP4` (`4.25 bpw`) on routed MoE experts + `Q8_0`/`Q4_0` on GQA/SSM backbone + `_MM_HINT_NTA` | Bandwidth bottleneck on CPU & VRAM capacity on `16 GB` GPUs | **`15.95 GiB`**, **`28.20 avg / 42.18 peak tok/s` `RouteCrack 2.0` CPU**, **`75.1–80.8 tok/s` on AMD Vulkan Hybrid** |
+| **5. SIMD Kernels (`FRACTAL_64` & `VQ3_64`)** | Single-cycle AVX-512 VBMI `VPERMI2B` (`VQ3_64 = 45`) and AVX-512 `vprorvq` / AVX2 variable bit-shifts fused into `vpmaddwd` (`FRACTAL_64 = 44`) | Scalar bit-unpacking overhead in sub-4-bit hierarchical blocks | **`+55%` `FRACTAL_64` kernel speedup** (`86.5 ms -> 55.8 ms` per 10M blocks), register-resident 384-byte `VQ3_64` codebook |
+| **6. Speculative Engine (`RouteCrack 2.0`)** | Unified `--spec-type routecrack2`: `832 B` L1 Micro-Arbiter (`kRC2DraftlessArbiter`) + `RCPredictor` + Two-Zone 40K Suffix + `192 KB` Stockfish-PVS Zobrist TT with 28-bit Tagged Mode Refutation ([`rc_routecrack2.h`](../speculative/cpp/rc_routecrack2.h)) | 1B neural draft models read `3.0 GB` from DDR5 (`40 ms`) and flush L3 cache; eliminates `W2` JSON mode-bleed divergence | **`28.20 avg / 42.18 peak tok/s`** (`+24.8%` vs `N=1`, `+10.5%` `W2`, `100%` exact `W1+W2`) on 16C Zen 5; up to **`60.4 tok/s`** `M=7` / **`111.62 tok/s`** on Threadripper 7985WX |
+| **7. Cache Isolation (`_MM_HINT_NTA`)** | Bidirectional Non-Temporal L3 bypass on cold MoE weights and KV tokens older than `LLAMA_KV_L3_WINDOW=2048` | Streaming `1.4–1.8 GB/tok` of MoE weights evicts hot Mamba-2 state and recent KV tokens from `64 MB` L3 | Keeps `18.4 MB` Mamba-2 state + `4.88 MiB` hot KV window in L3 cache |
+| **8. Virtual Memory (`2MB HugePages`)** | `MADV_HUGEPAGE` (`THP=madvise`) on weight mmap + compute arenas + `2MB`-aligned `posix_memalign` | `17.6 GiB` in `4KB` pages = `4.5M` PTEs, thrashing the `3,072`-entry Zen 5 L2 STLB (`14 ms/tok` page-walk stall) | Expands L2 STLB coverage to **`6.14 GB`**, cutting dTLB page-walk latency from `14.0 ms` to **`0.8 ms/tok` (`-99.6%` misses)** |
+| **9. Weight Tile Repacking (`q4_0_8x8`)** | In-memory AVX-512 VNNI (`VPDPBUSD`) / AVX2 interleaved `8×8` matrix tile repacking at model load | Cache-line splits and nibble-unpacking stalls during GEMV/GEMM | **`+19%` raw GEMV throughput** and **`241–306.8 tok/s` (`pp512`) prefill** on 16C Zen 5 |
+| **10. KV Cache (`EAKV + VPI`)** | Entropy-Guided Asymmetric KV (`Q8_0` Keys for RoPE phase precision, `Q4_0` Values) + Virtual Positional Indexing | FP16 KV cache growth and RoPE degradation at `128K–256K` context | Full **`256K` context in `432 MB`**, `100%` passkey needle retrieval |
+| **11. Agentic Loop (`HARP-Cache` Slot-0)** | Per-UID `/dev/shm` memory-mapped KV + Mamba-2 recurrent state snapshot + SSE Gateway auto-restore | Re-evaluating Claude Code's `22.2K`-token 40-tool system prompt takes `130.8 s` on CPU | **`18.9 ms` warm turn restore** |
+| **12. Dynamic MoE Pruning (`Top-K 6->4`)** | Opt-in norm-preserving dynamic MoE router truncation (`LLAMA_MOE_TOP_K=4` environment variable at server startup) | Reading 6 routed experts per layer on bandwidth-constrained DDR4/DDR5 | **`-33%` routed MoE DRAM traffic** (opt-in boot-time setting; `v3.1.0` defaults to unpruned `Top-6`) |
 
 ---
 
@@ -84,19 +85,21 @@ To measure quantization and abliteration fidelity directly against the uncompres
 
 ---
 
-## 4. Quick Commands for Nemotron
+## 4. Quick Commands for Nemotron (`v3.1.0`)
 
 ```bash
-# 1. Default 1-command launch (Linux / macOS / Windows Git Bash)
+# 1. Install & SHA-256 verify pre-quantized Nemotron v3.1.0 checkpoints from Hugging Face
+./install.sh --preset nemotron-vq3         # 13.30 GiB CPU-Turbo (types 44/45, AVX-512 VBMI + RouteCrack 2.0)
+./install.sh --preset nemotron-maxq-16gb   # 13.39 GiB 100% standard ggml (CPU / Apple Metal / CUDA / LM Studio)
+./install.sh --preset nemotron-fractal     # 14.36 GiB Fractal-64 (type 44, AVX2 / Apple Metal)
+
+# 2. Launch interactive streaming chat or run the 100-Point Quality & Tool-Calling Gate
 ./modchip chat
-
-# 2. Build LUT-VQ3-64 (13.30 GiB Hybrid from Fractal-64 + BF16), Fractal-64 (14.36 GiB), or Fractal-MXFP4 (15.95 GiB)
-./modchip quantize --vq3-nemotron  --input /path/to/Fractal-64.gguf --bf16 /path/to/bf16.gguf --output /path/to/VQ3-64.gguf
-./modchip quantize --profile fractal64 --input /path/to/bf16.gguf --output /path/to/Fractal-64.gguf
-./modchip quantize --profile mxfp4     --input /path/to/q4_0.gguf --output /path/to/Fractal-MXFP4.gguf
-
-# 3. Run the 100-Point Quality & Tool-Calling Gate
 ./modchip eval
+
+# 3. Install llama-quantize + companion tools (--all-tools) for custom standard-ggml quantization
+./modchip download-bin --all-tools
+./modchip quantize /path/to/bf16.gguf /path/to/out-q4_0.gguf Q4_0
 ```
 
 ### Trunk-only quantization (official Q4_0 experts kept)

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
 check_cpu_readiness.py — Hardware Compatibility, OS Headroom & Performance Estimator
-for DeepSeek-V4-Flash 284B (64 GB RAM Tier) & Nemotron-3.5-30B-A3B (16–32 GB RAM Tier)
+for llama-modchip v3.1.0 3-Tier RAM Fleet:
+  - 64 GB Tier: Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB) & DeepSeek-V4-Flash 284B MaxQ-v4 (57.99 GiB)
+  - 32 GB Tier: Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + 10.73 GiB lazy NVMe PLE)
+  - 16 GB Tier: NVIDIA-Nemotron-3.5-30B-A3B VQ3-64 (13.30 GiB) & MaxQ-16GB (13.39 GiB std ggml)
 
 Zero-dependency Python 3 script (standard library only).
 Inspects CPU topology, SIMD/AMX ISA extensions, L3 cache capacity, total & free RAM,
-Transparent HugePages (THP), runs a fast multi-core DRAM bandwidth micro-benchmark,
+Transparent HugePages (THP=madvise), runs a fast multi-core DRAM bandwidth micro-benchmark,
 and estimates latency (TTFT), throughput (tok/s), safe context window (-c 32768 vs
 -c 262144), and prebuilt binary variant (-avx512 vs -avx2).
 
 Usage:
-    python3 scripts/check_cpu_readiness.py [--model {both,30b,284b}] [--json] [--no-bench]
+    python3 scripts/check_cpu_readiness.py [--model {all,both,qwen38,30b,284b}] [--json] [--no-bench]
 
 Windows (PowerShell) — run from a file so the benchmark workers can be spawned:
     curl.exe -sLo check_cpu_readiness.py https://raw.githubusercontent.com/synchopate/llama-modchip/main/scripts/check_cpu_readiness.py
@@ -768,8 +771,8 @@ def measure_dram_bandwidth_gbs(physical_cores, total_ram_gb):
 def evaluate_readiness(cpu, mem, measured_bw_gbs):
     flags = cpu["flags"]
     has_amx = "amx_int8" in flags or "amx_tile" in flags
-    has_avx512_vnni = "avx512_vnni" in flags
-    has_avx512_bf16 = "avx512_bf16" in flags
+    has_avx512_vnni = "avx512_vnni" in flags or "avx512vnni" in flags
+    has_avx512_bf16 = "avx512_bf16" in flags or "avx512bf16" in flags
     has_avx512_vbmi = "avx512_vbmi" in flags or "avx512vbmi" in flags
     has_avx512f = "avx512f" in flags
     has_avx_vnni = "avx_vnni" in flags
@@ -868,16 +871,16 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
     prefill_scale = prefill_stat_scale if is_hybrid else prefill_dyn_scale
 
     # THP check:
-    # On Linux, 'always' backs anonymous buffers (~17-18.5 GiB) with 2MB THP automatically;
-    # on bare-metal short context the gain is small (~0-3%, larger in VMs / long context).
+    # On Linux, 'madvise' (or 'always') lets llama-modchip back hot weight maps & compute arenas
+    # with 2MB Transparent HugePages via MADV_HUGEPAGE without pre-faulting lazy NVMe PLE shards.
     is_linux = cpu.get("os") == "Linux"
     if not is_linux:
         thp_optimal = True
         thp_ok = True
         thp_mult = 1.00
     else:
-        thp_optimal = mem["thp_enabled"] == "always"
-        thp_ok = mem["thp_enabled"] in ("always", "madvise")
+        thp_optimal = mem["thp_enabled"] in ("madvise", "always")
+        thp_ok = mem["thp_enabled"] in ("madvise", "always")
         thp_mult = 1.00 if thp_optimal else 0.99
 
     base_floor_tps = 17.2 * decode_scale * thp_mult
@@ -891,8 +894,6 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
     slot_restore_ms = max(6.0, 18.9 / max(bw_ratio, 0.3))
 
     # Memory capacity & multi-agent slots
-    # Model weights Q4_0 = ~16.8 GB (mmap), OS + runtime overhead = ~2.0 GB
-    # Each 256K full-attention slot = ~0.43 GB (or 0.14 GB with SWA=4096)
     ram_total = mem["total_gb"]
     ram_avail = mem["available_gb"]
     can_fit_model_in_ram = ram_total >= 15.2
@@ -908,12 +909,15 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
     # Overall verdict
     if not can_fit_model_in_ram:
         tier = "TIER D — INSUFFICIENT RAM (< 16 GB Physical RAM)"
-        summary = "Your system has less than 15.2 GiB total RAM. Even the 13.30 GiB VQ3-64 checkpoint will swap to disk."
-    elif not can_fit_q4_in_ram:
-        tier = "TIER B+ — 16 GB COMPACT HOST (USE VQ3-64 13.30 GiB AT -c 32768)"
         summary = (
-            "16 GB RAM class detected: Q4_0 (17.60 GiB) would swap, so use NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf "
-            "(13.30 GiB) with -c 32768 and close heavy desktop apps."
+            "Your system has less than 15.2 GiB total RAM. Even the 13.30 GiB Nemotron VQ3-64 / "
+            "13.39 GiB MaxQ-16GB checkpoint will swap to disk."
+        )
+    elif not can_fit_q4_in_ram:
+        tier = "TIER B+ — 16 GB COMPACT HOST (USE NEMOTRON VQ3-64 13.30 GiB OR MAXQ-16GB 13.39 GiB)"
+        summary = (
+            "16 GB RAM class detected: use --preset nemotron-vq3 (13.30 GiB, AVX-512 VBMI CPU-Turbo) "
+            "or --preset nemotron-maxq-16gb (13.39 GiB, 100% standard ggml) at -c 32768 -ub 512."
         )
     elif tool_json_tps >= 45.0:
         if cpu.get("os") == "Darwin" and cpu.get("arch") == "arm64":
@@ -924,7 +928,7 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
             summary = "Multi-channel DDR5 / large LLC detected. Outperforms reference Zen 5 testbed by a wide margin."
     elif prose_code_tps >= 16.0:
         tier = "TIER A — PRODUCTION-READY INTERACTIVE CODING AGENT (CLAUDE CODE)"
-        summary = "Full 256K context & sub-second warm TTFT with smooth 20-25+ tok/s autonomous coding & tool calls."
+        summary = "Smooth interactive coding & tool calls with RouteCrack 2.0 across your detected RAM tier."
     elif prose_code_tps >= 9.0:
         tier = "TIER B — USABLE LOCAL ASSISTANT (MODERATE SPEED)"
         summary = "Usable for local chat and background coding tasks; enable LLAMA_ATTN_WINDOW=4096 for best speed."
@@ -940,11 +944,11 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
         "has_amx": has_amx,
         "prebuilt_binary": (
             "llama-server-modchip-linux-x86_64-avx512"
-            if (cpu.get("os") == "Linux" and cpu.get("arch") == "x86_64" and has_avx512f and has_avx512_vbmi)
+            if (cpu.get("os") == "Linux" and cpu.get("arch") == "x86_64" and has_avx512f and has_avx512_vbmi and has_avx512_vnni)
             else (
                 "llama-server-modchip-linux-x86_64-avx2"
-                if (cpu.get("os") == "Linux" and cpu.get("arch") == "x86_64")
-                else "build-from-source (./modchip setup)"
+                if (cpu.get("os") == "Linux" and cpu.get("arch") == "x86_64" and has_avx2)
+                else "build-from-source (./modchip setup --source)"
             )
         ),
         "l3_status": l3_status,
@@ -969,8 +973,61 @@ def evaluate_readiness(cpu, mem, measured_bw_gbs):
     }
 
 
+def evaluate_qwen38_readiness(cpu, mem, rep_30b):
+    """Evaluate Qwen3.8-Flash-Next MaxQ-64GB (53.99 GiB) & MaxQ-32GB (24.98 GiB + 10.73 GiB lazy PLE)."""
+    ram_total = float(mem.get("total_gb", 0.0))
+    ram_avail = float(mem.get("available_gb", 0.0))
+    eff_bw = float(rep_30b.get("measured_bw_gbs", 38.0))
+    bw_ratio = eff_bw / 50.5
+    flags = cpu["flags"]
+    has_avx512_full = ("avx512f" in flags) and ("avx512_vbmi" in flags or "avx512vbmi" in flags) and ("avx512_vnni" in flags or "avx512vnni" in flags)
+    isa_mult = 1.00 if has_avx512_full else (0.85 if "avx2" in flags else 0.70)
+    core_mlp = min(1.0, 0.70 + 0.02 * max(cpu["physical_cores"], 1))
+    scale = max(0.20, min(4.5, bw_ratio * core_mlp * isa_mult))
+
+    # Calibrated to 16C Zen 5 v3.1.0 JSON (8.78 N=1, 15.88 avg / 21.98 peak RouteCrack 2.0, 72.0 pp512)
+    est_n1 = round(8.78 * scale, 2)
+    est_rc2_avg = round(15.88 * scale, 2)
+    est_rc2_peak = round(21.98 * scale, 2)
+    est_pp512 = round(72.0 * min(max(cpu["physical_cores"], 1) / 16.0, 4.0) ** 0.82 * isa_mult, 1)
+
+    if ram_total >= 58.0 and ram_avail >= 46.5:
+        rec_preset = "qwen38-64gb"
+        status = "READY — 64 GB TIER (Qwen3.8-Flash-Next-MaxQ-64GB · 45.08 GiB VmHWM · PPL 3.43)"
+        note = (
+            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available comfortably holds 43.26 GiB Trunk + "
+            "10.73 GiB PLE (~45.08 GiB VmHWM, RssAnon 1.81 GiB) with RouteCrack 2.0."
+        )
+    elif ram_total >= 29.0 and ram_avail >= 26.0:
+        rec_preset = "qwen38-32gb"
+        status = "READY — 32 GB TIER (Qwen3.8-Flash-Next-MaxQ-32GB · 26.91 GiB <= 28.5 GiB Cgroup)"
+        note = (
+            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available fits 24.98 GiB Shard 1 in RAM + "
+            "10.73 GiB lazy NVMe mmap PLE (~26.9 GiB VmHWM, -ub 512 --ctx-checkpoints 0)."
+        )
+    else:
+        rec_preset = "nemotron-vq3" if has_avx512_full else "nemotron-maxq-16gb"
+        status = "BELOW 32 GB TIER — USE 16 GB NEMOTRON TIER (VQ3-64 / MaxQ-16GB)"
+        note = (
+            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available is below the 26.9 GiB VmHWM floor for Qwen3.8-MaxQ-32GB; "
+            f"use --preset {rec_preset} instead."
+        )
+
+    return {
+        "recommended_preset": rec_preset,
+        "status": status,
+        "note": note,
+        "estimates": {
+            "pp512_tok_s": est_pp512,
+            "raw_decode_n1_tok_s": est_n1,
+            "routecrack2_avg_tok_s": est_rc2_avg,
+            "routecrack2_peak_tok_s": est_rc2_peak,
+        },
+    }
+
+
 def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
-    """Evaluate 284.33B DeepSeek-V4-Flash-0731 (56.40–56.93 GiB 3-shard GGUF) RAM headroom & speed."""
+    """Evaluate 284.33B DeepSeek-V4-Flash-0731-MaxQ-v4 (57.99 GiB 3-shard standard ggml) RAM headroom & speed."""
     ram_total = float(mem.get("total_gb", 0.0))
     ram_avail = float(mem.get("available_gb", 0.0))
     eff_bw = float(rep_30b.get("measured_bw_gbs", 38.0))
@@ -978,6 +1035,7 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
 
     flags = cpu["flags"]
     has_vbmi = "avx512_vbmi" in flags or "avx512vbmi" in flags
+    has_vnni = "avx512_vnni" in flags or "avx512vnni" in flags
     has_avx512 = "avx512f" in flags
     has_avx2 = "avx2" in flags
     is_mac_arm = cpu.get("os") == "Darwin" and cpu.get("arch") == "arm64"
@@ -985,7 +1043,7 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
     if is_mac_arm:
         isa_mult_dec = 1.00
         isa_mult_pp = 1.35
-    elif has_avx512 and has_vbmi:
+    elif has_avx512 and has_vbmi and has_vnni:
         isa_mult_dec = 1.00
         isa_mult_pp = 1.00
     elif has_avx512:
@@ -1003,19 +1061,19 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
 
     if is_mac_arm:
         # Calibrated against verified M5 Max 64GB (286.5 GB/s -> 169.4 pp512, 20.7-27.0 tg)
-        raw_n1_tps = min(32.0, 9.05 * (eff_bw / 95.0))
-        cold_pp_tps = min(220.0, 41.1 * (eff_bw / 68.0))
+        raw_n1_tps = min(32.0, 6.80 * (eff_bw / 72.0))
+        cold_pp_tps = min(220.0, 45.0 * (eff_bw / 75.0))
     else:
-        raw_n1_tps = max(1.2, min(42.0, 9.05 * bw_ratio * core_mlp_dec * isa_mult_dec))
-        cold_pp_tps = max(3.0, min(260.0, 41.11 * core_ratio_pp * min(max(bw_ratio, 0.5), 2.5) * isa_mult_pp))
-    spec_burst_lo = round(raw_n1_tps * 1.32, 1)
-    spec_burst_hi = round(raw_n1_tps * 2.45, 1)
+        # Calibrated to 16C Zen 5 v3.1.0 MaxQ-v4 JSON (6.80 N=1, 7.79 avg / 12.31 peak RouteCrack 2.0, 45.0-50.5 pp)
+        raw_n1_tps = max(1.2, min(42.0, 6.80 * bw_ratio * core_mlp_dec * isa_mult_dec))
+        cold_pp_tps = max(3.0, min(260.0, 45.0 * core_ratio_pp * min(max(bw_ratio, 0.5), 2.5) * isa_mult_pp))
+    spec_burst_lo = round(raw_n1_tps * 1.15, 1)
+    spec_burst_hi = round(raw_n1_tps * 1.81, 1)
 
     # Usable RAM on a physical 64 GB DIMM kit is typically 61.8–62.8 GiB after BIOS/iGPU/kernel reservation.
-    # Weights on disk: 56.40 GiB (VQ3), 56.57 GiB (Fractal), 56.93 GiB (MaxQ-Fractal default / Abliterated-Fractal).
-    # Note: --load-mode none --repack allocates weights on non-reclaimable anonymous heap, plus /dev/shm slot snapshots.
-    # Peak VmRSS (MaxQ-Fractal 56.93 GiB): ~58.9–59.13 GiB at -c 32768 -ub 512, ~59.6–60.0 GiB at -c 262144.
-    est_rss_32k = 59.13
+    # Weights on disk: 57.99 GiB (DeepSeek-V4-Flash-0731-MaxQ-v4, 100% standard ggml).
+    # Peak VmHWM: ~58.71–59.11 GiB at -c 32768 -ub 512, ~59.9 GiB at -c 262144.
+    est_rss_32k = 59.11
     est_rss_256k = 59.90
     headroom_32k_gib = round(ram_avail - est_rss_32k, 2)
     headroom_256k_gib = round(ram_avail - est_rss_256k, 2)
@@ -1025,7 +1083,7 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
         rec_ctx = 262144
         status = "READY (96 GB+ Host — Full 256K Context with Ample OS Headroom)"
         note = (
-            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available comfortably holds 56.93 GiB anonymous-heap weights "
+            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available comfortably holds 57.99 GiB MaxQ-v4 weights "
             f"+ 256K MLA KV cache (-c 262144, ~{est_rss_256k:.1f} GiB VmRSS) with zero swap."
         )
     elif ram_total >= 59.5:
@@ -1034,31 +1092,31 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
             rec_ctx = 262144
             status = "READY ON 64 GB HOST (Headless / High Free RAM — -c 32768 -ub 512 Default, -c 262144 Headless)"
             note = (
-                f"{ram_avail:.1f} GiB available (~{headroom_32k_gib:+.2f} GiB OS margin above ~{est_rss_32k:.2f} GiB non-reclaimable VmRSS at -c 32768 -ub 512; "
+                f"{ram_avail:.1f} GiB available (~{headroom_32k_gib:+.2f} GiB OS margin above ~{est_rss_32k:.2f} GiB non-reclaimable VmHWM at -c 32768 -ub 512; "
                 f"~{headroom_256k_gib:+.2f} GiB at -c 262144). Keep -c 32768 -ub 512 on desktops; use -c 262144 only on headless servers."
             )
         elif ram_avail >= 59.8:
             can_fit_284b = True
             rec_ctx = 32768
-            status = "TIGHT 64 GB DESKTOP HEADROOM — Use -c 32768 -ub 512 (Or 56.40 GiB VQ3 Preset)"
+            status = "TIGHT 64 GB DESKTOP HEADROOM — Use -c 32768 -ub 512 (Or Qwen3.8-MaxQ-64GB 45.1 GiB VmHWM)"
             note = (
-                f"{ram_avail:.1f} GiB available leaves ~{headroom_32k_gib:+.2f} GiB OS headroom above ~{est_rss_32k:.2f} GiB anonymous-heap VmRSS "
-                "(--load-mode none --repack + /dev/shm slot cache). Close heavy browsers or choose dsv4-vq3 (56.40 GiB, ~58.31 GiB VmRSS) to avoid OOM killer."
+                f"{ram_avail:.1f} GiB available leaves ~{headroom_32k_gib:+.2f} GiB OS headroom above ~{est_rss_32k:.2f} GiB anonymous-heap VmHWM "
+                "(--load-mode none --repack). Close heavy browsers or choose --preset qwen38-64gb (45.08 GiB VmHWM) for generous desktop headroom."
             )
         else:
             can_fit_284b = False
             rec_ctx = 32768
             status = "64 GB HOST DETECTED — FREE RAM TOO LOW RIGHT NOW (< 59.8 GiB Available)"
             note = (
-                f"Hardware has {ram_total:.1f} GiB total RAM, but only {ram_avail:.1f} GiB is currently available ({headroom_32k_gib:+.2f} GiB vs {est_rss_32k:.2f} GiB VmRSS). "
-                "Close desktop/browser apps (or run headless) to free >= 60.0 GiB before loading the 56.93 GiB 284B model."
+                f"Hardware has {ram_total:.1f} GiB total RAM, but only {ram_avail:.1f} GiB is currently available ({headroom_32k_gib:+.2f} GiB vs {est_rss_32k:.2f} GiB VmHWM). "
+                "Close desktop/browser apps to free >= 60.0 GiB before loading 57.99 GiB MaxQ-v4, or use --preset qwen38-64gb (~45.1 GiB VmHWM)."
             )
     else:
         can_fit_284b = False
         rec_ctx = 0
-        status = "INSUFFICIENT RAM FOR 284B (< 64 GB Physical RAM — Use Nemotron-30B Instead)"
+        status = "INSUFFICIENT RAM FOR 284B (< 64 GB Physical RAM — Use Qwen3.8-32GB or Nemotron-16GB)"
         note = (
-            f"{ram_total:.1f} GiB total RAM cannot hold the 56.40–56.93 GiB 284B checkpoint in memory without severe SSD swap thrashing."
+            f"{ram_total:.1f} GiB total RAM cannot hold the 57.99 GiB DeepSeek-V4 MaxQ-v4 checkpoint in memory without SSD swap thrashing."
         )
 
     return {
@@ -1084,13 +1142,13 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Check CPU readiness & RAM headroom for DeepSeek-V4-Flash 284B (64GB) & Nemotron-30B-A3B"
+        description="Check CPU readiness & RAM headroom for llama-modchip v3.1.0 (Qwen3.8 64GB/32GB, DeepSeek-V4 284B MaxQ-v4, Nemotron-30B 16GB)"
     )
     parser.add_argument(
         "--model",
-        choices=("both", "30b", "284b"),
-        default="both",
-        help="Target model tier to evaluate (default: both)",
+        choices=("all", "both", "qwen38", "30b", "284b"),
+        default="all",
+        help="Target model tier to evaluate (default: all)",
     )
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     parser.add_argument("--no-bench", action="store_true", help="Skip the 0.6s DRAM bandwidth micro-benchmark")
@@ -1109,12 +1167,13 @@ def main():
 
     if not args.json:
         print("=" * 78)
-        print(" LLAMA-MODCHIP — CPU, SIMD ISA & 64GB/32GB RAM HEADROOM READINESS AUDIT")
+        print(" LLAMA-MODCHIP v3.1.0 — CPU, SIMD ISA & 16GB/32GB/64GB RAM READINESS AUDIT")
         print("=" * 78)
         print(" Running multi-core DRAM streaming micro-benchmark (~0.6s)..." if not args.no_bench else "")
 
     bw_gbs = 0.0 if args.no_bench else measure_dram_bandwidth_gbs(cpu["physical_cores"], mem["total_gb"])
     rep = evaluate_readiness(cpu, mem, bw_gbs)
+    rep_qwen = evaluate_qwen38_readiness(cpu, mem, rep)
     rep_284b = evaluate_dsv4_284b_readiness(cpu, mem, rep)
 
     if args.json:
@@ -1122,12 +1181,14 @@ def main():
             "cpu": {k: (list(v) if isinstance(v, set) else v) for k, v in cpu.items()},
             "memory": mem,
             "assessment": rep,
+            "assessment_qwen38": rep_qwen,
             "assessment_284b": rep_284b,
         }
         print(json.dumps(out, indent=2))
         return
 
     e = rep["estimates"]
+    decode_threads = max(1, cpu["physical_cores"] - 1) if cpu["physical_cores"] > 1 else 1
     print(f"\n [1] HARDWARE TOPOLOGY & ISA EXTENSIONS")
     print(f"  • CPU Model          : {cpu['model_name']}")
     print(f"  • Physical Cores     : {cpu['physical_cores']} cores ({cpu['logical_threads']} threads, {cpu['sockets']} socket, {cpu['numa_nodes']} NUMA node, non-SMT mask: {cpu['taskset_mask']})")
@@ -1152,15 +1213,38 @@ def main():
         thp_label = (
             "(OK)"
             if rep["thp_optimal"]
-            else "(optional: set 'always' to back ~17-18.5 GiB with 2MB pages — mainly helps VMs / long context)"
+            else "(recommended: set 'madvise' so MADV_HUGEPAGE backs hot weight maps without pre-faulting lazy PLE)"
         )
         print(f"  • 2MB HugePages (THP): enabled=[{mem['thp_enabled']}], defrag=[{mem['thp_defrag']}] {thp_label}")
     if bw_gbs > 0:
         print(f"  • Sustained DRAM BW  : {rep['measured_bw_gbs']:.1f} GB/s (multi-core user-space streaming)")
 
-    if args.model in ("both", "30b"):
-        ctx_note = "CPU-only NEON baseline; Metal GPU offload adds ~1.3-2.0x prefill" if (cpu.get("os") == "Darwin" and cpu.get("arch") == "arm64") else "Q4_0, 22K–35K Active Agent Context"
-        print(f"\n [2A] NEMOTRON-3.5-30B-A3B ANALYTICAL BANDWIDTH ESTIMATES ({ctx_note})")
+    if args.model in ("all", "both", "qwen38"):
+        eq = rep_qwen["estimates"]
+        print(f"\n [2A] QWEN3.8-FLASH-NEXT MAXQ (64 GB: 53.99 GiB · 32 GB: 24.98 GiB + LAZY PLE)")
+        print(f"  • Recommended Preset                       : --preset {rep_qwen['recommended_preset']}")
+        print(f"  • Tier Verdict                             : {rep_qwen['status']}")
+        print(f"  • RAM Headroom Check                       : {rep_qwen['note']}")
+        if rep_qwen["recommended_preset"].startswith("qwen38"):
+            print(f"  • Estimated Prompt Prefill (pp512)         : ~{eq['pp512_tok_s']:.1f} tok/s")
+            print(f"  • Estimated Pure Decode (N=1)              : ~{eq['raw_decode_n1_tok_s']:.2f} tok/s")
+            print(f"  • Estimated RouteCrack 2.0 (avg / peak)    : ~{eq['routecrack2_avg_tok_s']:.2f} / {eq['routecrack2_peak_tok_s']:.2f} tok/s")
+
+    if args.model in ("all", "both", "284b"):
+        e284 = rep_284b["estimates"]
+        sb_lo, sb_hi = e284["speculative_burst_tok_s_range"]
+        print(f"\n [2B] DEEPSEEK-V4-FLASH-0731 MAXQ-V4 284B (57.99 GiB STD GGML · 64 GB TIER)")
+        print(f"  • 64 GB Tier Verdict                       : {rep_284b['status']}")
+        print(f"  • OS RAM Headroom Check                    : {rep_284b['note']}")
+        if rep_284b["can_fit_284b_in_ram"]:
+            print(f"  • Recommended Context Flag                 : -c {rep_284b['recommended_ctx']} (-c 32768 safe desktop default; -c 262144 headless server)")
+            print(f"  • Cold Prompt Prefill (pp128)              : ~{e284['cold_prefill_pp128_tok_s']:.1f} tok/s")
+            print(f"  • Raw Pure Decode (N=1, unpruned Top-6)    : ~{e284['raw_decode_n1_tok_s']:.2f} tok/s")
+            print(f"  • RouteCrack 2.0 Heavy-MoE Burst           : ~{sb_lo:.1f}–{sb_hi:.1f} tok/s")
+
+    if args.model in ("all", "both", "30b"):
+        ctx_note = "CPU-only NEON baseline; Metal GPU offload adds ~1.3-2.0x prefill" if (cpu.get("os") == "Darwin" and cpu.get("arch") == "arm64") else "16 GB Tier: VQ3-64 13.30 GiB / MaxQ-16GB 13.39 GiB"
+        print(f"\n [2C] NEMOTRON-3.5-30B-A3B ANALYTICAL BANDWIDTH ESTIMATES ({ctx_note})")
         print(f"      (Heuristic hardware-roofline projections — run './modchip bench' for empirical tok/s)")
         print(f"  • Slot 0 Disk Snapshot Restore (22.2K tok) : ~{e['slot_restore_ms']:.1f} ms")
         print(f"  • Warm Interactive TTFT (40-tool prefix)   : ~{e['warm_ttft_sec']:.2f} s")
@@ -1169,22 +1253,10 @@ def main():
         else:
             print(f"  • Cold Prompt Prefill Throughput           : ~{e['prefill_tok_s']:.0f} tok/s")
         print(f"  • Decode — Base Physical Floor (N=1 raw)   : ~{e['base_floor_tok_s']:.1f} tok/s")
-        print(f"  • Decode — Technical Prose + New Code      : ~{e['prose_and_code_tok_s']:.1f} tok/s  (Q4_0; Fractal-64 varies ~-7% to +30%)")
-        print(f"  • Decode — Refactor / Tool-Call (~67% acc) : ~{e['tool_call_json_tok_s']:.1f} tok/s")
-        print(f"  • Decode — High-Hit Boilerplate Burst      : ~{e['repetitive_code_tok_s']:.1f} tok/s  (90%+ PVS hit)")
+        print(f"  • Decode — Technical Prose + New Code      : ~{e['prose_and_code_tok_s']:.1f} tok/s")
+        print(f"  • Decode — RouteCrack 2.0 Tool/Refactor    : ~{e['tool_call_json_tok_s']:.1f} tok/s")
+        print(f"  • Decode — High-Hit Boilerplate Burst      : ~{e['repetitive_code_tok_s']:.1f} tok/s")
         print(f"  • Max Concurrent 256K Agent Workers        : {rep['max_256k_slots']} instance(s)")
-
-    if args.model in ("both", "284b"):
-        e284 = rep_284b["estimates"]
-        sb_lo, sb_hi = e284["speculative_burst_tok_s_range"]
-        print(f"\n [2B] DEEPSEEK-V4-FLASH-0731 284B (56.4–56.9 GiB GGUF · 64 GB TIER)")
-        print(f"  • 64 GB Tier Verdict                       : {rep_284b['status']}")
-        print(f"  • OS RAM Headroom Check                    : {rep_284b['note']}")
-        if rep_284b["can_fit_284b_in_ram"]:
-            print(f"  • Recommended Context Flag                 : -c {rep_284b['recommended_ctx']} (-c 32768 safe desktop default; -c 262144 headless server)")
-            print(f"  • Cold Prompt Prefill (pp128)              : ~{e284['cold_prefill_pp128_tok_s']:.1f} tok/s")
-            print(f"  • Raw Pure Decode (N=1, unpruned Top-6)    : ~{e284['raw_decode_n1_tok_s']:.2f} tok/s")
-            print(f"  • Speculative / Agentic Burst (PVS)        : ~{sb_lo:.1f}–{sb_hi:.1f} tok/s")
 
     print(f"\n [3] VERDICT & RECOMMENDED TUNING")
     print(f"  ► {rep['tier']}")
@@ -1193,7 +1265,7 @@ def main():
     if cpu.get("os") == "Darwin" and cpu.get("arch") == "arm64":
         print(f"\n [4] RECOMMENDED LAUNCH COMMANDS FOR APPLE SILICON (Metal + NEON SDOT)")
         print(f"  git clone https://github.com/synchopate/llama-modchip.git && cd llama-modchip")
-        print(f"  ./modchip setup     # builds native arm64 + Metal (Q4_0 & Fractal-64 Q2_0 shaders)")
+        print(f"  ./modchip setup     # builds native arm64 + Metal (standard ggml & Fractal-64 type 44 shaders)")
         print(f"  ./modchip start && ./modchip bench")
     elif cpu.get("os") == "Windows":
         core_mask = sum(1 << c for c in cpu.get("physical_core_ids", [])) or 1
@@ -1202,16 +1274,17 @@ def main():
         print(f"  $env:LLAMA_KV_L3_WINDOW=2048; $env:LLAMA_ATTN_WINDOW=0; $env:LLAMA_ATTN_SINKS=16")
         print(f"  $env:LLAMA_SWA_STRIDE=1; $env:LLAMA_KV_DISABLE_CHUNKING=1; $env:OMP_PROC_BIND='close'; $env:OMP_PLACES='cores'")
         print(f"  llama-server.exe --model NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf `")
-        print(f"    -c 262144 -np 1 -t {cpu['physical_cores']} -tb {cpu['physical_cores']} -b 2048 -ub 2048 --cpu-mask 0x{core_mask:X} `")
+        print(f"    -c 32768 -np 1 -t {decode_threads} -tb {decode_threads} --poll 0 --poll-batch 0 -b 2048 -ub 2048 --cpu-mask 0x{core_mask:X} `")
         print(f"    --cache-type-k q8_0 --cache-type-v q4_0 --repack --flash-attn auto --cache-reuse 256 --slot-save-path $env:TEMP `")
         print(f"    --ctx-checkpoints 64 --checkpoint-min-step 128 `")
         print(f"    --spec-type routecrack2")
     else:
-        print(f"\n [4] RECOMMENDED LAUNCH FLAGS FOR THIS CPU (via llama_modchip.py)")
+        print(f"\n [4] RECOMMENDED LAUNCH FLAGS FOR THIS CPU (via llama_modchip.py, non-convoy -t {decode_threads} --poll 0)")
+        print(f"  ./modchip setup --preset {rep_qwen['recommended_preset']}")
         print(f"  python3 scripts/llama_modchip.py --model /path/to/model.gguf --apply-shm --print-cmd")
         print(f"  export LLAMA_KV_L3_WINDOW=2048 LLAMA_ATTN_WINDOW=0 LLAMA_ATTN_SINKS=16 LLAMA_SWA_STRIDE=1 LLAMA_KV_DISABLE_CHUNKING=1 OMP_PROC_BIND=close OMP_PLACES=cores")
         print(f"  taskset -c {cpu['taskset_mask']} llama-server --model NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf \\")
-        print(f"    -c 262144 -np 1 -t {cpu['physical_cores']} -tb {cpu['physical_cores']} -b 2048 -ub 2048 \\")
+        print(f"    -c 32768 -np 1 -t {decode_threads} -tb {decode_threads} --poll 0 --poll-batch 0 -b 2048 -ub 2048 \\")
         print(f"    --cache-type-k q8_0 --cache-type-v q4_0 --repack --flash-attn auto --cache-reuse 256 --slot-save-path /dev/shm \\")
         print(f"    --ctx-checkpoints 64 --checkpoint-min-step 128 \\")
         print(f"    --spec-type routecrack2")
@@ -1220,12 +1293,12 @@ def main():
         print(f"\n  [!] Multi-NUMA / Multi-Socket Server Detected ({cpu['numa_nodes']} NUMA nodes):")
         print(f"      Avoid spanning a single 3B-active MoE across NUMA interconnects (UPI/Infinity Fabric).")
         print(f"      Instead, pin 1 independent agent instance per NUMA node:")
-        print(f"      numactl --cpunodebind=0 --membind=0 llama-server ... -t {cores_per_node} --port 8789")
+        print(f"      numactl --cpunodebind=0 --membind=0 llama-server ... -t {cores_per_node} --poll 0 --poll-batch 0 --port 8789")
     if not rep["thp_optimal"] and cpu.get("os") == "Linux":
-        print(f"\n  [i] Optional: Enable 2MB Transparent HugePages before launching (backs ~17-18.5 GiB with 2MB pages):")
-        print(f"      echo always        | sudo tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null")
+        print(f"\n  [i] Optional: Enable madvise 2MB Transparent HugePages before launching:")
+        print(f"      echo madvise       | sudo tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null")
         print(f"      echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag  >/dev/null")
-        print(f"      (System-wide; resets on reboot — persist via /etc/tmpfiles.d/thp.conf if desired.)")
+        print(f"      (System-wide; resets on reboot — persist via systemd/thp-llm.conf -> /etc/tmpfiles.d/thp-llm.conf.)")
     if (
         cpu.get("os") == "Linux"
         and cpu.get("arch") == "x86_64"

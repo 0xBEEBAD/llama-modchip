@@ -30,11 +30,11 @@
 
 1. **Why standard 3-bit K-quants (`Q3_K`, `IQ3_S`, `IQ3_XXS`) fail on Nemotron-3.5-30B-A3B**:
    - The 23 Sparse MoE layers (`46` routed `ffn_up_exps` + `ffn_down_exps` tensors) use `n_embd = 2688` (`42 × 64`) and `n_ff_exp = 1856` (`29 × 64`). Because `1856` and `2688` are not divisible by `QK_K = 256`, `llama-quantize` cannot use any 256-block K-quant or I-quant and falls back to `Q4_0`.
-2. **Block-64 2-Level Fractal Hierarchy (`block_q2_0`, `QK2_0 = 64`, `30 bytes` = `3.75 bpw`)**:
+2. **Block-64 2-Level Fractal Hierarchy (`block_fractal_64`, `GGML_TYPE_FRACTAL_64 = 44`, `QK_FRACTAL_64 = 64`, `30 bytes` = `3.75 bpw`)**:
    - **Level 1 (64-weight super-block, `2 bytes`)**: Master `FP16` scale `d = max_b(s_opt[b]) / 19.0f`.
    - **Level 2 (8 × 8-weight sub-blocks, `4 bytes`)**: Eight 4-bit shifted sub-scales `sc[b] ∈ {0..15}` mapped to integer multipliers `mult[b] = 4 + sc[b] ∈ {4..19}`. Because local kurtosis across 8 weights is low, the ratio `max_b / min_b` across 8 sub-blocks is bounded within `4.75×`, making `{0..3}` dead codes; shifting the 4-bit window to `{4..19}` boosts sub-block scale resolution by `+31%`.
    - **Level 3 (Non-Linear Dyadic Codebook, `24 bytes` for 64 × 3-bit indices)**: Each weight is quantized against the self-similar non-linear integer lattice `{-14, -8, -4, -1, +1, +4, +8, +14}` (`0.71:1` step-spacing near zero for Laplacian/Gaussian MoE weights, reaching `±14` for outlier tails).
-   - **Zero-Overhead Fused AVX2 + `_MM_HINT_NTA` Kernel (`ggml_vec_dot_q2_0_q8_0_generic`)**:
+   - **Zero-Overhead Fused AVX2 / AVX-512 + `_MM_HINT_NTA` Kernel (`ggml_vec_dot_fractal_64_q8_0`)**:
      - Unpacks the 64 3-bit indices via `_mm_unpacklo_epi64(qh_lo, _mm_srli_epi16(qh_lo, 1))` and translates them in 1 cycle with `_mm256_shuffle_epi8(lut256, idx)`.
      - Computes `p01 = _mm256_maddubs_epi16(_mm256_abs_epi8(q01), _mm256_sign_epi8(q8_0, q01))` (`16 × int16_t`, where each 8-weight sub-block maps to 4 consecutive `int16_t` lanes).
      - Multiplies each 8-weight sub-block by its integer sub-scale `mult[b] ∈ {4..19}` **inside the widening horizontal add** `_mm256_madd_epi16(p01, vmult01)` (`vpmaddwd`) at **zero extra SIMD instruction cost**, while streaming MoE weights with `_MM_HINT_NTA` so the 64 MB Zen 5 L3 cache remains pinned for KV/SSM state and shared experts.

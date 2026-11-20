@@ -74,12 +74,80 @@ _KV_CACHE_DIR = os.path.join(_REPO_ROOT, "kv_cache")
 if _KV_CACHE_DIR not in sys.path:
     sys.path.insert(0, _KV_CACHE_DIR)
 
+
+def _resolve_workspace_dir() -> str:
+    env_ws = os.environ.get("WORKSPACE_DIR", "").strip()
+    if env_ws:
+        return env_ws
+    marker = os.path.join(_REPO_ROOT, ".modchip_workspace")
+    if os.path.isfile(marker):
+        try:
+            with open(marker, "r", encoding="utf-8") as mf:
+                line = mf.readline().strip()
+                if line:
+                    return line
+        except OSError:
+            pass
+    return os.path.join(_REPO_ROOT, "workspace")
+
+
+_WORKSPACE_DIR = _resolve_workspace_dir()
+_EUID = getattr(os, "geteuid", getattr(os, "getuid", lambda: 0))()
+_HARP_SHM_PATH = f"/dev/shm/modchip_harp_cache_{_EUID}.bin"
+
+_active_model_cache = {"name": "", "ts": 0.0}
+_active_model_lock = threading.Lock()
+
+
+def _detect_active_model(target_upstream: str = UPSTREAM_BASE, fallback: str = "modchip-local") -> str:
+    """Dynamically detects the active served model alias (env -> /v1/models -> /props -> default_model)."""
+    env_name = os.environ.get("MODCHIP_MODEL_NAME", "").strip()
+    if env_name:
+        return env_name
+    now = time.monotonic()
+    with _active_model_lock:
+        if _active_model_cache["name"] and (now - _active_model_cache["ts"]) < 5.0:
+            return _active_model_cache["name"]
+    detected = ""
+    try:
+        mreq = urllib.request.Request(f"{target_upstream}/v1/models", method="GET")
+        with urllib.request.urlopen(mreq, timeout=0.35) as mresp:
+            mdata = json.loads(mresp.read().decode("utf-8", errors="replace"))
+            mlist = mdata.get("data") or mdata.get("models") or []
+            if mlist and isinstance(mlist[0], dict):
+                detected = os.path.basename(str(mlist[0].get("id") or mlist[0].get("name") or "")).strip()
+    except Exception:
+        pass
+    if not detected:
+        try:
+            preq = urllib.request.Request(f"{target_upstream}/props", method="GET")
+            with urllib.request.urlopen(preq, timeout=0.35) as presp:
+                pdata = json.loads(presp.read().decode("utf-8", errors="replace"))
+                detected = os.path.basename(str(pdata.get("model_path") or "")).strip()
+        except Exception:
+            pass
+    if not detected:
+        def_mfile = os.path.join(_resolve_workspace_dir(), "run", "default_model")
+        if os.path.isfile(def_mfile):
+            try:
+                with open(def_mfile, "r", encoding="utf-8") as dmf:
+                    detected = os.path.basename(dmf.readline().strip())
+            except OSError:
+                pass
+    if detected:
+        with _active_model_lock:
+            _active_model_cache["name"] = detected
+            _active_model_cache["ts"] = now
+        return detected
+    return fallback or "modchip-local"
+
+
 _harp_engine = None
 if os.environ.get("HARP_CACHE", "1") != "0" and os.path.isdir("/dev/shm"):
     try:
         from harp_cache import HARPCacheEngine, hash_token_block
-        _harp_engine = HARPCacheEngine(shm_path="/dev/shm/nemotron_harp_cache.bin")
-        print("[Gateway] RouteCrack-KV: HARP-Cache Shared Memory Engine initialized (/dev/shm/nemotron_harp_cache.bin).", flush=True)
+        _harp_engine = HARPCacheEngine(shm_path=_HARP_SHM_PATH)
+        print(f"[Gateway] RouteCrack-KV: HARP-Cache Shared Memory Engine initialized ({_HARP_SHM_PATH}).", flush=True)
     except Exception as _harp_init_err:
         _harp_engine = None
         print(f"[Gateway] Notice: HARP-Cache not loaded: {_harp_init_err}", flush=True)
@@ -97,13 +165,14 @@ SLOT0_SNAPSHOT_NAME = os.environ.get("LLAMA_SLOT_SNAPSHOT_NAME", "claude_40tools
 
 def _ensure_slot0_restored(target_upstream: str) -> None:
     """Auto-restores the Slot 0 snapshot (22.2K tokens for Nemotron or 2.94K compact tokens for DeepSeek-V4) in ~19-32 ms if Slot 0 is cold or was evicted."""
+    ws_dir = _resolve_workspace_dir()
     shm_snap = f"/dev/shm/{SLOT0_SNAPSHOT_NAME}"
     custom_cache_dir = os.environ.get("MODCHIP_CACHE_DIR", "")
     if not os.path.exists(shm_snap):
         for disk_cand in (
             os.path.join(custom_cache_dir, SLOT0_SNAPSHOT_NAME) if custom_cache_dir else "",
-            os.path.join(_REPO_ROOT, "workspace", "cache", SLOT0_SNAPSHOT_NAME),
-            os.path.join(_REPO_ROOT, "workspace", "slot_cache", SLOT0_SNAPSHOT_NAME),
+            os.path.join(ws_dir, "cache", SLOT0_SNAPSHOT_NAME),
+            os.path.join(ws_dir, "slot_cache", SLOT0_SNAPSHOT_NAME),
         ):
             if disk_cand and os.path.exists(disk_cand):
                 try:
@@ -861,11 +930,11 @@ class ThinkBlockFilter:
 
         if not self.has_content_block:
             # THOUGHT CANNIBALIZATION RESCUE:
-            # If the model placed its entire answer inside <think> and exited without emitting text or tools:
-            # do NOT inject a dummy "Completato."! Inject the actual thinking analysis!
+            # If the model placed its entire answer inside <think> and exited without emitting text or tools,
+            # emit the actual thinking analysis instead of a bare placeholder.
             fallback = self.thinking_buf.strip()
             if not fallback:
-                fallback = "Operazione completata."
+                fallback = "Operation completed."
 
             out.append("event: content_block_start\ndata: " + json.dumps({
                 "type": "content_block_start",
@@ -883,7 +952,7 @@ class ThinkBlockFilter:
             }))
             self.next_idx += 1
             self.has_content_block = True
-        elif not self.has_tool_call and self.text_buf.strip() in ("Completato.", "Completato", "Fatto.", "Fatto", "Ecco.", "Finito.") and len(self.thinking_buf.strip()) > 80:
+        elif not self.has_tool_call and self.text_buf.strip() in ("Completed.", "Done.", "Operation completed.", "Completato.", "Completato", "Fatto.", "Fatto", "Ecco.", "Finito.") and len(self.thinking_buf.strip()) > 80:
             # Model wrote detailed analysis in thinking and emitted only "Completato." in text!
             rescue_text = "\n\n" + self.thinking_buf.strip()
             out.append("event: content_block_start\ndata: " + json.dumps({
@@ -1058,7 +1127,7 @@ def _build_modchip_telemetry_json() -> dict:
         "active": False,
         "l3_window": 2048,
         "attn_window": 0,
-        "moe_top_k": 4,
+        "moe_top_k": 0,
         "rc_enabled": 1,
         "rc_gates": "84/92/96",
     }
@@ -1138,7 +1207,7 @@ def _build_modchip_telemetry_json() -> dict:
             except Exception:
                 pass
     if not active_model:
-        def_mfile = os.path.join(_REPO_ROOT, "workspace", "run", "default_model")
+        def_mfile = os.path.join(_resolve_workspace_dir(), "run", "default_model")
         if os.path.isfile(def_mfile):
             try:
                 with open(def_mfile, "r", encoding="utf-8") as dmf:
@@ -1384,7 +1453,7 @@ WEB_UI_HTML = """<!DOCTYPE html>
   </div>
   <div class="hud-card">
     <div class="hud-label">🔧 Modchip Locks</div>
-    <div class="hud-val cyan" id="hud-locks">MoE Top-K=4</div>
+    <div class="hud-val cyan" id="hud-locks">MoE Top-K=Auto</div>
     <div class="hud-sub" id="hud-l3">L3 Win: 2048t | Full 256K</div>
   </div>
 </section>
@@ -1392,8 +1461,8 @@ WEB_UI_HTML = """<!DOCTYPE html>
 <div class="presets">
   <span>1-Click Benchmarks:</span>
   <button class="preset-btn" onclick="runPreset('Write a high-performance C++20 lock-free ring buffer using std::atomic with cache-line alignment (alignas(64)) to prevent false sharing, and include a brief usage example.')">⚡ C++20 Lock-Free Ring Buffer</button>
-  <button class="preset-btn" onclick="runPreset('Refactor the code above to add batch push_bulk() and pop_bulk() methods with zero-copy span views, preserving the exact class structure and comments.')">♟️ In-Context Refactor (Stockfish M=7 Burst)</button>
-  <button class="preset-btn" onclick="runPreset('Explain in 5 concise bullet points why 2MB Transparent HugePages, AVX-512 VNNI tile repacking, and Stockfish Zobrist Transposition Tables accelerate 30B Sparse MoE inference on CPU.')">🧠 Systems Architecture Summary</button>
+  <button class="preset-btn" onclick="runPreset('Refactor the code above to add batch push_bulk() and pop_bulk() methods with zero-copy span views, preserving the exact class structure and comments.')">♟️ In-Context Refactor (RouteCrack 2.0 Burst)</button>
+  <button class="preset-btn" onclick="runPreset('Explain in 5 concise bullet points why 2MB Transparent HugePages, AVX-512 VNNI tile repacking, and the RouteCrack 2.0 L1 Micro-Arbiter accelerate Sparse MoE and Hybrid GDN/Mamba-2 inference on CPU.')">🧠 Systems Architecture Summary</button>
   <button class="preset-btn" onclick="clearChat()" style="margin-left:auto;">🗑️ Clear Context</button>
 </div>
 
@@ -1433,12 +1502,14 @@ async function pollTelemetry() {
       badge.textContent = 'WAITING FOR LLAMA-SERVER';
       badge.style.color = '#d29922';
     }
-    document.getElementById('cpu-banner').textContent = `${d.cpu_model} | Upstream: ${d.upstream}`;
+    const modelTag = d.active_model ? ` | Model: ${d.active_model}` : '';
+    document.getElementById('cpu-banner').textContent = `${d.cpu_model}${modelTag} | Upstream: ${d.upstream}`;
     document.getElementById('hud-slot').textContent = `${(d.slot0_tokens || 0).toLocaleString()} tok`;
     document.getElementById('hud-hp').textContent = `2MB THP: ${d.anon_hugepages_gib} GiB`;
     if (d.shm) {
-      document.getElementById('hud-locks').textContent = `MoE Top-K=${d.shm.moe_top_k} | Gates ${d.shm.rc_gates}`;
-      const swaMode = d.shm.attn_window === 0 ? 'Full 256K GQA' : `SWA ${d.shm.attn_window}t`;
+      const moeLabel = (!d.shm.moe_top_k || d.shm.moe_top_k === 0) ? 'Auto' : String(d.shm.moe_top_k);
+      document.getElementById('hud-locks').textContent = `MoE Top-K=${moeLabel} | Gates ${d.shm.rc_gates}`;
+      const swaMode = d.shm.attn_window === 0 ? 'Full 256K Context' : `SWA ${d.shm.attn_window}t`;
       document.getElementById('hud-l3').textContent = `L3 NTA: ${d.shm.l3_window}t | ${swaMode}`;
     }
   } catch (e) {}
@@ -1598,7 +1669,7 @@ async function sendMessage() {
         const accPct = (100.0 * (finalTimings.draft_n_accepted || 0) / finalTimings.draft_n).toFixed(1);
         document.getElementById('hud-spec').textContent = `${accPct}% Accepted`;
         document.getElementById('hud-spec-sub').textContent = `${finalTimings.draft_n_accepted}/${finalTimings.draft_n} draft tokens`;
-        specStr = ` | ♟️ Stockfish-PVS: ${finalTimings.draft_n_accepted}/${finalTimings.draft_n} (${accPct}% accepted)`;
+        specStr = ` | ♟️ RouteCrack 2.0: ${finalTimings.draft_n_accepted}/${finalTimings.draft_n} (${accPct}% accepted)`;
       }
       metaDiv.textContent = `⚡ Decode: ${decTps.toFixed(2)} tok/s (${nPred} tok) | 🧠 Prefill: ${ppTps.toFixed(1)} tok/s | ⏱️ TTFT: ${Math.round((tFirst || performance.now()) - tStart)} ms${specStr}`;
     } else {
@@ -1694,7 +1765,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return
         self._forward_request("GET")
 
-    def _send_anthropic_text_response(self, text, is_stream=False):
+    def _send_anthropic_text_response(self, text, is_stream=False, model_name=None):
+        resolved_model = model_name or _detect_active_model(UPSTREAM_BASE)
         if is_stream:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -1706,11 +1778,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 ("message_start", {
                     "type": "message_start",
                     "message": {
-                        "id": "msg_nemotron_cmd",
+                        "id": "msg_modchip_cmd",
                         "type": "message",
                         "role": "assistant",
                         "content": [],
-                        "model": "nemotron-30b",
+                        "model": resolved_model,
                         "stop_reason": None,
                         "stop_sequence": None,
                         "usage": {"input_tokens": 1, "output_tokens": 1}
@@ -1745,11 +1817,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
         else:
             resp = {
-                "id": "msg_nemotron_cmd",
+                "id": "msg_modchip_cmd",
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "text", "text": text}],
-                "model": "nemotron-30b",
+                "model": resolved_model,
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 1, "output_tokens": max(1, len(text.split()))}
             }
@@ -1840,11 +1912,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
                 if action == "STATUS":
                     status_msg = (
-                        f"🧠 **Modalità Thinking Corrente: `{active_mode.upper()}`** (Host: `{client_ip}`)\n\n"
-                        "Comandi disponibili:\n"
-                        "• `/think:think no`  — Nessun thinking (risposta diretta istantanea)\n"
-                        "• `/think:think med` — Thinking moderato (budget 1.024 token)\n"
-                        "• `/think:think max` — Thinking completo (unrestricted)\n"
+                        f"🧠 **Current Thinking Mode: `{active_mode.upper()}`** (Host: `{client_ip}`)\n\n"
+                        "Available commands:\n"
+                        "• `/think:think no`  — No thinking (immediate direct response)\n"
+                        "• `/think:think med` — Medium thinking (1,024-token budget)\n"
+                        "• `/think:think max` — Max thinking (unrestricted)\n"
                     )
                     print(f"[Gateway] [{log_sess}] Responded to status query: {active_mode.upper()}", flush=True)
                     self._send_anthropic_text_response(status_msg, is_stream=is_stream)
@@ -1856,14 +1928,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     set_session_mode(client_ip, new_mode)
                     active_mode = new_mode
                     desc = {
-                        "no": "NESSUN THINKING (Risposta diretta immediata)",
-                        "med": "THINKING MEDIO (Budget 1.024 token)",
-                        "max": "THINKING MASSIMO (Unrestricted)"
+                        "no": "NO THINKING (Immediate direct response)",
+                        "med": "MEDIUM THINKING (1,024-token budget)",
+                        "max": "MAX THINKING (Unrestricted)"
                     }.get(new_mode, new_mode)
                     print(f"[Gateway] [{log_sess}] Mode switched to: {active_mode.upper()} ({desc})", flush=True)
 
                     if not remainder:
-                        ack_msg = f"⚡ *Modalità Thinking impostata su **{new_mode.upper()}** ({desc})*"
+                        ack_msg = f"⚡ *Thinking Mode set to **{new_mode.upper()}** ({desc})*"
                         self._send_anthropic_text_response(ack_msg, is_stream=is_stream)
                         return
                     else:
@@ -1879,7 +1951,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                             target_user_msg["content"] = remainder
 
                 # Sanitize system reminders & mid-conversation system injections:
-                # Retain system reminders by default unless explicitly configured via MODCHIP_STRIP_SYSTEM_REMINDERS=1 or GATEWAY_STRIP_REMINDERS=1.
+                # Strip <system-reminder>/<total_tokens> blocks by default (GATEWAY_STRIP_REMINDERS=1) to keep Slot 0 prefixes invariant.
+                # Set GATEWAY_STRIP_REMINDERS=0 to retain client system reminders.
                 strip_reminders = (
                     os.environ.get("MODCHIP_STRIP_SYSTEM_REMINDERS") == "1"
                     or GATEWAY_STRIP_REMINDERS
@@ -1955,6 +2028,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 elif "_ preserved_memory" in data:
                     data.pop("_ preserved_memory", None)
 
+                # Resolve active model alias dynamically so Qwen3.8 / DeepSeek-V4 / Nemotron keep their true identity
+                resolved_model = _detect_active_model(UPSTREAM_BASE, fallback=str(data.get("model") or "modchip-local"))
+
                 # SINGLE CENTRALIZED SYSTEM PROMPT (gateway/system_prompt.md)
                 _sys_prompt_path = os.environ.get(
                     "GATEWAY_SYSTEM_PROMPT",
@@ -1964,10 +2040,10 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     with open(_sys_prompt_path, "r", encoding="utf-8") as _spf:
                         master_system_prompt = _spf.read().strip()
                 except Exception:
-                    master_system_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
+                    master_system_prompt = "You are a senior software engineering and systems architecture assistant running locally on llama-modchip."
 
-                # Keep data["system"] invariant BEFORE <tools> so Slot 0 prefix tokens never diverge.
-                # If the client sent a custom system prompt, preserve it unless MODCHIP_OVERRIDE_SYSTEM_PROMPT=1 is set.
+                # Keep data["system"] invariant in the top-level Anthropic `system` field (never inject role="system" into Anthropic messages[]).
+                # Preserve client-supplied system prompts by default unless MODCHIP_OVERRIDE_SYSTEM_PROMPT=1 is set.
                 unified_system = []
                 orig_system = data.get("system")
                 if orig_system and os.environ.get("MODCHIP_OVERRIDE_SYSTEM_PROMPT") != "1":
@@ -1982,18 +2058,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
                         bh_str = m_bh.group(1) if m_bh else "x-anthropic-billing-header: cc_version=2.1.283.49b; cc_entrypoint=cli;"
                         unified_system.append({"type": "text", "text": bh_str})
                     unified_system.append({"type": "text", "text": master_system_prompt})
+                if extracted_memory_blocks:
+                    unified_system.append({"type": "text", "text": "\n\n".join(extracted_memory_blocks)})
                 data["system"] = unified_system
 
-                # Place centralized directive + extracted MEMORY.md/CLAUDE.md immediately after </tools></IMPORTANT>
-                # (before first user turn and before Mamba-2 Checkpoint 0)
-                post_tools_system = master_system_prompt
-                if extracted_memory_blocks:
-                    post_tools_system = post_tools_system + "\n\n" + "\n\n".join(extracted_memory_blocks)
-                if messages:
-                    messages.insert(0, {"role": "system", "content": post_tools_system})
-
                 # RouteCrack-KV: Opt-in capture of Claude Code base prefix (CAPTURE_WARMUP_PAYLOAD=1, mode 0600)
-                _warmup_path = os.environ.get("WARMUP_PAYLOAD_PATH", os.path.join(_REPO_ROOT, "workspace", "cache", "claude_warmup_payload.json"))
+                _warmup_path = os.environ.get("WARMUP_PAYLOAD_PATH", os.path.join(_resolve_workspace_dir(), "cache", "claude_warmup_payload.json"))
                 if (
                     os.environ.get("CAPTURE_WARMUP_PAYLOAD") == "1"
                     and "system" in data
@@ -2006,7 +2076,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                         _wfd = os.open(_warmup_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                         with os.fdopen(_wfd, "w", encoding="utf-8") as _wf:
                             json.dump({
-                                "model": "nemotron-30b",
+                                "model": resolved_model,
                                 "system": data["system"],
                                 "_ preserved_memory": extracted_memory_blocks,
                                 "tools": data["tools"],
@@ -2043,8 +2113,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                             reqs = set(schema.get("required") or [])
                             psigs = [f"{pk}{'*' if pk in reqs else ''}:{pv.get('type','any') if isinstance(pv,dict) else 'any'}" for pk, pv in props.items()]
                             compact_lines.append(f"- {tname}({', '.join(psigs)})")
-                        if messages and messages[0].get("role") == "system":
-                            messages[0]["content"] = messages[0].get("content", "") + "\n\n" + "\n".join(compact_lines)
+                        data["system"].append({"type": "text", "text": "\n".join(compact_lines)})
                         data.pop("tools", None)
 
                 # Enforce safe upper bound on max_tokens (allow up to 16384 when thinking is enabled in max/med mode)
@@ -2076,7 +2145,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     data["thinking_budget_tokens"] = -1
 
                 target_upstream = UPSTREAM_BASE
-                data["model"] = "nemotron-30b"
+                data["model"] = resolved_model
 
                 # Auto-restore Slot 0 snapshot in ~18.9-32 ms if Slot 0 was evicted or is cold
                 if (len(messages) <= 2 or _last_endpoint_was_chat or (isinstance(data.get("tools"), list) and len(data["tools"]) >= 20)) and not is_prewarm:
@@ -2098,7 +2167,10 @@ class GatewayHandler(BaseHTTPRequestHandler):
                             for m in messages[:-1]:
                                 prefix_elements.append(json.dumps(m, sort_keys=True))
                         prefix_text = "\n".join(prefix_elements)
-                        sim_tokens = [int(hash(chunk) & 0x7fffffff) for chunk in [prefix_text[i:i+4] for i in range(0, len(prefix_text), 4)]]
+                        sim_tokens = [
+                            int.from_bytes(hashlib.sha256(chunk.encode("utf-8")).digest()[:4], "little") & 0x7fffffff
+                            for chunk in [prefix_text[i:i+4] for i in range(0, len(prefix_text), 4)]
+                        ]
                         if len(sim_tokens) >= 32:
                             cached_tokens, matched_pages, suffix = _harp_engine.resolve_prefix(sim_tokens)
                             if len(sim_tokens) - cached_tokens >= 64:

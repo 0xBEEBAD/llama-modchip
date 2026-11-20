@@ -740,7 +740,7 @@ def _build_hacks_list(
             f"Auto-sized from {kv_bpt} B/tok so hot KV occupies <=25% L3; older tokens bypass L3 via _MM_HINT_NTA."
         ),
         HackItem(
-            6, "routecrack", "RouteCrack Draftless Speculative Engine (FNV64+Trie+PPM)",
+            6, "routecrack", "RouteCrack 2.0 Speculative Engine (832B L1 Micro-Arbiter)",
             "LIVE-SHM", "ADAPTIVE", rc_active,
             rc_val,
             rc_reason
@@ -1121,7 +1121,7 @@ def build_launch_command(
     if prof.model.arch == "qwen4exp":
         if prof.hw.ram_total_gib < 96.0:
             ctx_target = min(ctx_target, 32768)
-        ubatch = 512 if prof.hw.ram_total_gib < 48.0 else 2048
+        ubatch = 512 if (prof.model.is_qwen38_32gb or prof.hw.ram_total_gib < 48.0) else 2048
     elif prof.model.arch == "deepseek4" and prof.hw.ram_total_gib < 80.0:
         avail_gib = _get_avail_ram_gib(prof.hw.ram_total_gib)
         if avail_gib < 64.0 or prof.hw.ram_total_gib <= 68.0:
@@ -1153,7 +1153,7 @@ def build_launch_command(
         cmd_parts.append("--repack")
     cmd_parts.append(f"--cache-reuse 256 --slot-save-path {shlex.quote(slot_save_dir)}")
     if prof.model.arch == "qwen4exp":
-        q_ckpts = 0 if prof.hw.ram_total_gib < 48.0 else 1
+        q_ckpts = 0 if (prof.model.is_qwen38_32gb or prof.hw.ram_total_gib < 48.0) else 1
         cmd_parts.append(f"--jinja --ctx-checkpoints {q_ckpts}")
         mmproj_cand = os.path.join(
             os.path.dirname(os.path.abspath(prof.model.path)),
@@ -1167,8 +1167,8 @@ def build_launch_command(
         cmd_parts.append("--ctx-checkpoints 64 --checkpoint-min-step 128")
     if prof.rc_enabled:
         cmd_parts.append("--spec-type routecrack2")
-    elif prof.model.arch == "qwen4exp" and prof.model.has_mtp:
-        cmd_parts.append("--spec-type draft-mtp")
+    elif prof.model.arch == "qwen4exp":
+        cmd_parts.append("--spec-type none")
     cmd_parts.append("--reasoning-format deepseek --reasoning-budget 0")
     return " \\\n  ".join(cmd_parts)
 
@@ -1311,7 +1311,9 @@ def _detect_bench_bin(user_bin: Optional[str] = None) -> Optional[str]:
         return user_bin
     ws_dir = _detect_workspace_dir()
     candidates = [
+        os.path.join(ws_dir, "bin", "llama-bench"),
         os.path.join(ws_dir, "llama.cpp", "build", "bin", "llama-bench"),
+        "./workspace/bin/llama-bench",
         "./workspace/llama.cpp/build/bin/llama-bench",
         "./build/bin/llama-bench",
         "./build_zen5/bin/llama-bench",

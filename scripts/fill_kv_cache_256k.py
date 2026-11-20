@@ -12,8 +12,12 @@ import time
 import os
 import sys
 
+from urllib.parse import urlsplit
+
 ENDPOINT = os.environ.get("LLAMA_ENDPOINT", "http://127.0.0.1:8789/completion")
-SLOTS_ENDPOINT = os.environ.get("LLAMA_SLOTS_ENDPOINT", "http://127.0.0.1:8789/slots")
+_ep = urlsplit(ENDPOINT)
+_BASE_URL = f"{_ep.scheme}://{_ep.netloc}" if (_ep.scheme and _ep.netloc) else "http://127.0.0.1:8789"
+SLOTS_ENDPOINT = os.environ.get("LLAMA_SLOTS_ENDPOINT", f"{_BASE_URL}/slots")
 OUTPUT_JSON = os.environ.get("KV_RESULTS_JSON", "kv_scaling_256k_results.json")
 
 # Target milestones in tokens to measure generation performance
@@ -80,8 +84,8 @@ def main():
     # 1. Reset slot 0 to clean initial state
     print("[*] Erasing slot 0 for pristine benchmark start...")
     try:
-        urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8789/slots/0?action=erase", method="POST"))
-    except:
+        urllib.request.urlopen(urllib.request.Request(f"{SLOTS_ENDPOINT.rstrip('/')}/0?action=erase", method="POST"))
+    except Exception:
         pass
     time.sleep(1)
 

@@ -6,7 +6,7 @@ NOTE: This file is an offline analytical simulator used to evaluate per-cell Q8_
 quantization error prior to production deployment.
 In the active production llama-server path, asymmetric KV quantization is applied natively via
 llama.cpp's `--cache-type-k q8_0 --cache-type-v q4_0` flags combined with the `_MM_HINT_NTA`
-L3 isolation patch in `patches/zen5-nemotron-256k-optimizations.patch`.
+L3 isolation patch in `patches/llama-modchip-v3.1.patch`.
 """
 
 import math

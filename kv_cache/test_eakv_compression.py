@@ -8,6 +8,7 @@ the standalone `eakv_quantizer.py` prototype.
 
 import math
 import time
+import unittest
 import numpy as np
 try:
     from kv_cache.eakv_quantizer import EAKVEngine
@@ -120,5 +121,11 @@ def test_eakv_fidelity_and_compression():
     print("🎉 PHASE 3 VALIDATION COMPLETED WITH 100% SUCCESS!")
     print("=" * 85)
 
+
+class TestEAKVCompression(unittest.TestCase):
+    def test_eakv_fidelity_and_compression(self):
+        test_eakv_fidelity_and_compression()
+
+
 if __name__ == "__main__":
-    test_eakv_fidelity_and_compression()
+    unittest.main()

@@ -1,4 +1,6 @@
 {
+  "model_label": "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated",
+  "model_path": "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf",
   "preconditions": {
     "mem_available_gib": 66.67,
     "mem_free_gib": 23.06

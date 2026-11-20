@@ -156,24 +156,28 @@ Write-Head ("llama-modchip v3.1.0 -- {0} on Windows" -f $(if ($isQwen38) { "Qwen
 
 if ($Threads -le 0) { $Threads = [math]::Max(1, $hw.PhysCores - 1) }
 
-# Total size of a split GGUF
-$shards = @(Get-ChildItem -LiteralPath $ModelDir -Filter "*.gguf" -File |
-            Where-Object { $_.Name -match "-0000\d-of-0000\d\.gguf$" } )
+# Total size and shard count scoped strictly to the selected model prefix (handles >=10 shards safely)
 $totalBytes = $modelInfo.Length
-if ($modelInfo.Name -match "-00001-of-(\d+)\.gguf$") {
-    $n = [int]$Matches[1]
+$shardCount = 1
+if ($modelInfo.Name -match "^(.+)-\d{5}-of-(\d{5})\.gguf$") {
+    $modelPrefix = $Matches[1]
+    $n = [int]$Matches[2]
     $totalBytes = 0
+    $shardCount = 0
     for ($i = 1; $i -le $n; $i++) {
-        $f = Join-Path $ModelDir ($modelInfo.Name -replace "00001-of", ("0000$i-of"))
-        if (Test-Path $f) { $totalBytes += (Get-Item $f).Length }
+        $f = Join-Path $ModelDir ("{0}-{1:D5}-of-{2:D5}.gguf" -f $modelPrefix, $i, $n)
+        if (Test-Path $f) {
+            $totalBytes += (Get-Item $f).Length
+            $shardCount++
+        }
     }
 }
 $totalGB = [math]::Round($totalBytes / 1GB, 2)
 
 Write-Host ("  Engine    : {0}" -f $exe)
-Write-Host ("  Patched   : {0}" -f $(if ($patched) { "yes (FRACTAL_64=44 + VQ3_64=45 + MoE pruning)" } else { "NO - stock build cannot read FRACTAL_64 (44) / VQ3_64 (45) tensors" }))
+Write-Host ("  Patched   : {0}" -f $(if ($patched) { "yes (FRACTAL_64=44 + VQ3_64=45 + RouteCrack 2.0 + MoE pruning)" } else { "NO - stock build cannot read FRACTAL_64 (44) / VQ3_64 (45) tensors" }))
 Write-Host ("  Model     : {0}" -f $modelInfo.Name)
-Write-Host ("  Model size: {0} GB total ({1} shards)" -f $totalGB, $shards.Count)
+Write-Host ("  Model size: {0} GB total ({1} shards)" -f $totalGB, $shardCount)
 Write-Host ("  CPU       : {0} ({1} physical cores / {2} threads)" -f $hw.CpuName, $hw.PhysCores, $hw.LogCores)
 Write-Host ("  GPU       : {0} ({1} MB VRAM free)" -f $hw.GpuName, $hw.VramFreeMB)
 Write-Host ("  RAM       : {0} GB total, {1} GB free" -f $hw.RamTotalGB, $hw.RamFreeGB)
@@ -208,6 +212,7 @@ Remove-Item Env:DSV4_MOE_TOPK -ErrorAction SilentlyContinue
 Remove-Item Env:DSV4_MOE_MIN_W -ErrorAction SilentlyContinue
 Remove-Item Env:LLAMA_MOE_TOP_K -ErrorAction SilentlyContinue
 
+$ubatchSize = if ($isQwen32GB) { "512" } else { "2048" }
 $srvArgs = @(
     "-m", $modelPath,
     "--host", "127.0.0.1",
@@ -221,7 +226,7 @@ $srvArgs = @(
     "--poll-batch", "0",
     "--repack",
     "-b", "2048",
-    "-ub", "2048",
+    "-ub", $ubatchSize,
     "-fa", "on",
     "--cache-type-k", $KvType,
     "--cache-type-v", $kvTypeV,
@@ -287,20 +292,28 @@ if ($Bench) {
     $benchExe = Join-Path (Split-Path -Parent $exe) "llama-bench.exe"
     if (-not (Test-Path $benchExe)) { throw "llama-bench.exe not found next to $exe" }
     Write-Head "llama-bench: prefill pp512 + decode tg128"
-    & $benchExe -m $modelPath -t $Threads -fa 1 -ctk $KvType -ctv $KvType -p 512 -n 128 -r 2
+    & $benchExe -m $modelPath -t $Threads -fa 1 -ctk $KvType -ctv $kvTypeV -p 512 -n 128 -r 2
     exit $LASTEXITCODE
 }
 
 Write-Host ""
-Write-Host ("  Context   : {0} tokens (KV {1}/{2}, flash-attn)" -f $Ctx, $KvType, $kvTypeV)
+Write-Host ("  Context   : {0} tokens (KV {1}/{2}, flash-attn, -ub {3})" -f $Ctx, $KvType, $kvTypeV, $ubatchSize)
 if ($isQwen38) {
     Write-Host "  MoE Top-K : 10 of 512 routed experts + 1 shared expert"
 } elseif ($isNemotron) {
-    Write-Host "  MoE Top-K : 6 of 128 routed experts + 2 shared experts"
+    Write-Host "  MoE Top-K : 6 of 128 routed experts + 1 shared expert (double-width)"
 } else {
     Write-Host ("  MoE Top-K : {0} of 6 routed experts (min weight {1})" -f $MoeTopK, $MoeMinW)
 }
-$specBanner = if ($NoSpec) { "off" } elseif ($isQwen38) { "draft-mtp (NextN blk.48)" } else { "n-gram simple (n=4, m=7)" }
+$specBanner = if ($NoSpec -or $SpecType -eq "none") {
+    "off"
+} elseif ($SpecType -eq "routecrack2") {
+    "RouteCrack 2.0 (832B L1 Micro-Arbiter)"
+} elseif ($SpecType -eq "ngram-simple") {
+    "ngram-simple (n=4, m=7)"
+} else {
+    $SpecType
+}
 Write-Host ("  Spec      : {0}" -f $specBanner)
 if ($cfgPath -and -not $isQwen38 -and -not $isNemotron) { Write-Host ("  Live cfg  : {0}" -f $cfgPath) }
 Write-Host ("  Offload   : {0}" -f $(if ($NGpuLayers -gt 0) { "-ngl $NGpuLayers, --n-cpu-moe $NCpuMoe (FRACTAL_64/VQ3_64 pinned to CPU)" } else { "CPU only" }))

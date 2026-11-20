@@ -2,8 +2,8 @@
 """
 eval_quality_and_tools.py — Objective 100-Point Quality, Tool-Calling, Coding & Speed Gate
 ==========================================================================================
-Evaluates any running llama-modchip / llama-server instance (e.g., Baseline Q4_0 18.9GB vs
-Fractal-MoE IQ3 11.8GB / IQ2 9.6GB) across 4 deterministic, programmatically verified suites:
+Evaluates any running llama-modchip / llama-server instance (e.g., Qwen3.8-Flash-Next MaxQ-64GB/32GB,
+DeepSeek-V4 MaxQ-v4, or Nemotron-3.5-30B VQ3-64 / MaxQ-16GB) across 4 deterministic, programmatically verified suites:
 
   1. Agentic Tool-Calling & Schema Precision (30 pts):
      - Tests Anthropic `/v1/messages` and OpenAI `/v1/chat/completions` tool use (`Read`, `Grep`,
@@ -16,17 +16,17 @@ Fractal-MoE IQ3 11.8GB / IQ2 9.6GB) across 4 deterministic, programmatically ver
      - Embeds cryptographic canary keys + port numbers inside a long multi-file context and
        verifies exact retrieval + multi-step cache-bandwidth arithmetic.
   4. Speed, Speculative Acceptance & RAM Footprint Telemetry (20 pts):
-     - Measures Prefill tok/s, Decode tok/s, Stockfish-PVS draft acceptance %, and process
+     - Measures Prefill tok/s, Decode tok/s, RouteCrack 2.0 draft acceptance %, and process
        resident RAM (`VmRSS` / `AnonHugePages` GiB).
 
 Usage:
   # Evaluate currently running engine and save JSON/Markdown report:
-  python3 benchmarks/eval_quality_and_tools.py --url http://127.0.0.1:8787 --label "Baseline-Q4_0-18.9GB" \
-      --save-json workspace/eval_baseline_q4_0.json
+  python3 benchmarks/eval_quality_and_tools.py --url http://127.0.0.1:8787 --label "Baseline-Ref" \
+      --save-json workspace/eval_baseline.json
 
-  # Compare candidate Fractal-MoE model against saved baseline:
-  python3 benchmarks/eval_quality_and_tools.py --url http://127.0.0.1:8787 --label "FractalMoE-IQ3-11.8GB" \
-      --compare workspace/eval_baseline_q4_0.json --save-md workspace/QUALITY_GATE_REPORT.md
+  # Compare candidate MaxQ model against saved baseline:
+  python3 benchmarks/eval_quality_and_tools.py --url http://127.0.0.1:8787 --label "Qwen3.8-MaxQ-64GB" \
+      --compare workspace/eval_baseline.json --save-md workspace/QUALITY_GATE_REPORT.md
 """
 
 import argparse
@@ -165,9 +165,35 @@ def measure_llama_rss_gib(base_url: str = "") -> Tuple[float, float]:
     return round(rss_kb / (1024.0 * 1024.0), 2), round(anon_hp_gib, 2)
 
 
-def post_chat_completion(base_url: str, messages: List[Dict[str, Any]], max_tokens: int = 512) -> Dict[str, Any]:
+_ACTIVE_MODEL_NAME = os.environ.get("MODCHIP_MODEL_NAME", "").strip()
+
+
+def _resolve_model_name(base_url: str, explicit: str = "") -> str:
+    global _ACTIVE_MODEL_NAME
+    if explicit:
+        _ACTIVE_MODEL_NAME = explicit
+        return explicit
+    if _ACTIVE_MODEL_NAME:
+        return _ACTIVE_MODEL_NAME
+    try:
+        req = urllib.request.Request(f"{base_url.rstrip('/')}/v1/models", method="GET")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            mdata = json.loads(resp.read().decode("utf-8", errors="replace"))
+            mlist = mdata.get("data") or mdata.get("models") or []
+            if mlist and isinstance(mlist[0], dict):
+                mid = str(mlist[0].get("id") or mlist[0].get("name") or "").strip()
+                if mid:
+                    _ACTIVE_MODEL_NAME = os.path.basename(mid)
+                    return _ACTIVE_MODEL_NAME
+    except Exception:
+        pass
+    _ACTIVE_MODEL_NAME = "modchip-local"
+    return _ACTIVE_MODEL_NAME
+
+
+def post_chat_completion(base_url: str, messages: List[Dict[str, Any]], max_tokens: int = 512, model: str = "") -> Dict[str, Any]:
     payload = {
-        "model": "nemotron-30b",
+        "model": _resolve_model_name(base_url, model),
         "messages": messages,
         "stream": False,
         "temperature": 0.0,
@@ -194,10 +220,11 @@ def post_anthropic_messages_stream(
     messages: List[Dict[str, Any]],
     tools: Optional[List[Dict[str, Any]]] = None,
     max_tokens: int = 512,
+    model: str = "",
 ) -> Dict[str, Any]:
     """Calls /v1/messages with stream=True (and X-Direct: 1) and parses SSE tool_use + text blocks."""
     payload: Dict[str, Any] = {
-        "model": "nemotron-30b",
+        "model": _resolve_model_name(base_url, model),
         "messages": messages,
         "stream": True,
         "temperature": 0.0,
@@ -561,6 +588,7 @@ def run_suite_speed_and_ram(base_url: str, target_tps: float = 15.0) -> Tuple[fl
 def main() -> int:
     parser = argparse.ArgumentParser(description="100-Point Quality, Tool-Calling, Coding & Speed Gate")
     parser.add_argument("--url", default="http://127.0.0.1:8787", help="Gateway or llama-server URL")
+    parser.add_argument("--model", default="", help="Optional model ID override (auto-detected via /v1/models by default)")
     parser.add_argument("--label", default="Candidate-Model", help="Model/profile label for the report")
     parser.add_argument("--save-json", "--out", dest="save_json", default="", help="Save full JSON evaluation results to path")
     parser.add_argument("--compare", "--baseline", dest="compare", default="", help="Compare against a baseline JSON evaluation file")
@@ -573,9 +601,10 @@ def main() -> int:
     parser.add_argument("--save-logits", default="", help="Optional path to save 12-probe top-64 logprobs JSON (Reference pass)")
     parser.add_argument("--ref-logits", default="", help="Optional reference logprobs JSON to compute continuous Logit KL-Divergence")
     args = parser.parse_args()
+    active_model = _resolve_model_name(args.url, args.model)
 
     print("=" * 90)
-    print(f" LLAMA-MODCHIP QUALITY, TOOL-USE & PERFORMANCE GATE — [{args.label}]")
+    print(f" LLAMA-MODCHIP QUALITY, TOOL-USE & PERFORMANCE GATE — [{args.label}] (model={active_model})")
     print("=" * 90)
 
     s_tools, d_tools = run_suite_tools(args.url)
@@ -696,7 +725,7 @@ def main() -> int:
             f"| **3. Long-Context Needle & Math (`20` pts)** | `{base['suites']['needle_math_20']:.1f}` | **`{result['suites']['needle_math_20']:.1f}`** | `{result['suites']['needle_math_20'] - base['suites']['needle_math_20']:+.1f}` |",
             f"| **Quality Subtotal (`80` pts)** | `{base['quality_score_80']:.1f}` | **`{result['quality_score_80']:.1f}`** | `{qual_ratio:.1f}% parity` |",
             f"| **Decode Throughput (`tok/s`)** | `{b_t['decode_tps']} tok/s` | **`{c_t['decode_tps']} tok/s`** | `{spd_ratio - 100.0:+.1f}%` |",
-            f"| **Stockfish-PVS Acceptance (`%`)** | `{b_t['draft_accept_pct']}%` | **`{c_t['draft_accept_pct']}%`** | `{c_t['draft_accept_pct'] - b_t['draft_accept_pct']:+.1f}%` |",
+            f"| **RouteCrack 2.0 Acceptance (`%`)** | `{b_t['draft_accept_pct']}%` | **`{c_t['draft_accept_pct']}%`** | `{c_t['draft_accept_pct'] - b_t['draft_accept_pct']:+.1f}%` |",
             f"| **Resident RAM (`VmRSS GiB`)** | `{b_t['rss_gib']} GiB` | **`{c_t['rss_gib']} GiB`** | **`{ram_delta:+.2f} GiB`** |",
         ]
         b_cont = base.get("continuous") or {}

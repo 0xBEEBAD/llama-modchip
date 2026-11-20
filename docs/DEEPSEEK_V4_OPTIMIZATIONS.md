@@ -15,15 +15,25 @@
 
 ---
 
-## 2. Operator-by-Operator Profiling (Prefill vs Decode on 16C/32T Zen 5)
+## 2. Operator-by-Operator Profiling & `v3.1.0` `RouteCrack 2.0` Results (16C/32T Zen 5)
 
-Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` (`patches/deepseek-v4-flash-fractal-256k.patch`) on an **AMD Ryzen 9 9955HX (`16C/32T Zen 5`, `0 GPUs`)**:
+### A. `v3.1.0` `RouteCrack 2.0` (`kRC2HeavyMoEDraftlessArbiter`) on `DeepSeek-V4-Flash-0731-MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`)
 
-### A. Single-Token Decode (`N=1`, `4,551` Graph Nodes) — Evolution Across Optimizations
+Evaluated head-to-head on 16 Zen 5 cores (`0 GPU`, `T = 0`, `192` tok/wl, unpruned `Top-6`; raw JSON in [`benchmarks/results/dsv4_routecrack2_v31.json`](../benchmarks/results/dsv4_routecrack2_v31.json)):
 
-| Operator / Subsystem (`43` Layers) | Tensor Types | Calls / Tok | `v2.3.0` Initial (`169.3 ms`) | Pre-Micro-Opt (`121.9 ms`) | **`v2.5.0` Unpruned `Top-6` (`110.3 ms`)** | **`v2.5.0` `Top-4 L2` (`98.8 ms`)** | What Was Optimized |
+| Speculative Config | `W1` Refactor | `W2` JSON Tools | `W3` C99 | `W4` Prose | **Aggregate** | Accept (`Mean Len`) | `VmHWM` |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Pure `N=1` (`--spec-type none`) | `6.48` | `6.70` | `6.90` | `7.01` | `6.80 tok/s` | `0.0%` (`1.00`) | `58.71 GiB` |
+| `v3.0` (`--spec-type ngram-map-k`) | `11.90` | `7.39` | `6.74` | `6.55` | `7.73 tok/s` | `85.49%` (`2.42`) | `59.11 GiB` |
+| **`v3.1.0` `RouteCrack 2.0` (`routecrack2`)** | **`12.31`** (`+90.0%`, exact) | **`7.55`** (`+12.7%`, exact) | `6.74` | `6.49` | **`7.79 tok/s`** (`+14.5%`) | **`85.92%`** (`2.97`) | `59.11 GiB` |
+
+### B. Operator-by-Operator Single-Token Decode Evolution (`N=1`, `4,551` Graph Nodes)
+
+Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` ([`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch)) on an **AMD Ryzen 9 9955HX (`16C/32T Zen 5`, `0 GPUs`)**:
+
+| Operator / Subsystem (`43` Layers) | Tensor Types | Calls / Tok | `v2.3.0` Initial (`169.3 ms`) | Pre-Micro-Opt (`121.9 ms`) | **`v3.1.0` Unpruned `Top-6` (`110.3 ms`)** | **`v3.1.0` `Top-4 L2` (`98.8 ms`)** | What Was Optimized |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1. MLA & Shared Expert `MUL_MAT`** (`wq_b`, `wo_a`, `wo_b`, `wkv`, `shexp`) | `q2_0` / `vq3_0` | `512` | `78.40 ms` | `62.20 ms` | **`61.81 ms`** | **`61.81 ms`** | AVX-512 `vprorvq` / `vpermi2b`, 3D L1D tiling (`wo_a`), 8-slot `Q8_0` cache, barrier elision (`nr0 < 4096`) |
+| **1. MLA & Shared Expert `MUL_MAT`** (`wq_b`, `wo_a`, `wo_b`, `wkv`, `shexp`) | `Q4_K`/`Q6_K`/`FRACTAL_64` | `512` | `78.40 ms` | `62.20 ms` | **`61.81 ms`** | **`61.81 ms`** | AVX-512 `vprorvq` / `vpermi2b`, 3D L1D tiling (`wo_a`), 8-slot `Q8_0` cache, barrier elision (`nr0 < 4096`) |
 | **2. Routed MoE `MUL_MAT_ID`** (`up_exps`, `gate_exps`, `down_exps` — Bulk) | `iq1_s` (`SwiGLU-H2`) | `87` | `25.10 ms` | `22.79 ms` | **`22.27 ms`** | **`15.17 ms`** *(`-33.4%`)* | 8-slot `Q8_K` cache, `MUL_MAT_ID` row-group reuse, `ones256` AVX2 hoist, $L_2$-quadrature tail pruning |
 | **3. Routed MoE `MUL_MAT_ID`** (Anchor Layers `{0,1,26,28,41,42}`) | `iq2_xxs` | `18` | `4.50 ms` | `4.04 ms` | **`4.01 ms`** | **`2.75 ms`** *(`-31.9%`)* | `MUL_MAT_ID` row-group reuse + $L_2$-quadrature tail pruning |
 | **4. Routed MoE `MUL_MAT_ID`** (Mid-Sensitivity Layers) | `iq1_m` | `24` | `2.10 ms` | `1.81 ms` | **`1.80 ms`** | **`1.16 ms`** *(`-35.9%`)* | `MUL_MAT_ID` row-group reuse + $L_2$-quadrature tail pruning |
@@ -32,11 +42,11 @@ Measured via `LLAMA_PROFILE_OPS` inside `ggml_graph_compute_thread` (`patches/de
 | **7. Graph Rebuild & `CSA/LID` Compressor Overhead** | Graph / C++ | `1` | `28.40 ms` | `11.67 ms` | **`1.54 ms`** | **`0.00 ms`** | Zero-rebuild dynamic `CSA/LID` skip (`flags |= 0x100`, `ggml_dsv4_skip_csa_comp`) |
 | **TOTAL SINGLE-TOKEN LATENCY (`ms/tok` & `tok/s`)** | **All (`3.20 GB` -> `2.85 GB`)** | **`4,551`** | **`169.30 ms` (`5.91 tok/s`)** | **`121.92 ms` (`8.20 tok/s`)** | **`110.33 ms` (`9.06 tok/s`)** | **`98.84 ms` (`10.12 tok/s`)** | **`+53.3%` Unpruned `Top-6` / `+71.2%` with `Top-4 L2` (`11.5–25.3 tok/s` w/ `Stockfish-PVS`)** |
 
-### B. Batched Prompt Prefill (`pp512`, `n_tokens = 512`, `5,375` Graph Nodes)
+### C. Batched Prompt Prefill (`pp512`, `n_tokens = 512`, `5,375` Graph Nodes)
 
 | Operator Category (`pp512` Batch) | Total Time (`512` Tokens) | Time per Token (`ms/tok`) | Share of Prefill | Optimization Applied |
 | :--- | :---: | :---: | :---: | :--- |
-| **`MUL_MAT` (`q2_0` MLA + Shared Expert GEMM)** | `4,250.33 ms` | `8.30 ms/tok` | `34.5%` | AVX-512 `vprorvq` (`_mm512_rorv_epi64`) + L1D cache tiling |
+| **`MUL_MAT` (`FRACTAL_64` / `Q4_K`/`Q6_K` MLA + Shared Expert GEMM)** | `4,250.33 ms` | `8.30 ms/tok` | `34.5%` | AVX-512 `vprorvq` (`_mm512_rorv_epi64`) + L1D cache tiling |
 | **`MUL_MAT_ID` (`iq1_s` + `iq2_xxs` + `iq1_m` Routed MoE GEMM)** | `5,849.85 ms` | `11.43 ms/tok` | `47.5%` | Batched expert bucket aggregation (`cne1 > 1` GEMM reuse across 512 tokens) |
 | **`FLASH_ATTN_EXT` + `DSA_INDEXER` (MLA + Sparse Indexer)** | `1,401.10 ms` | `2.74 ms/tok` | `11.4%` | 8-step sparse lookahead prefetch + AVX-512 F16 dot products |
 | **`HADAMARD` + `HC_PRE/POST` + `RMS_NORM` + Misc** | `811.78 ms` | `1.59 ms/tok` | `6.6%` | In-register AVX2 9-stage FWHT + vectorized Sinkhorn-20 Hyper-Connections |
@@ -120,24 +130,21 @@ $$\mathbf{h} = \text{SiLU}(\mathbf{W}_{\text{gate}} \mathbf{x}) \odot (\mathbf{W
 
 ---
 
-## 5. Shipped 64 GB `0731` Checkpoints: `v3.0` Donor-Free `MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`) & Historical `v2.5.x` Series
+## 5. Shipped 64 GB `0731` Checkpoints: `v3.1.0` Donor-Free `MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`) & Historical `v2.5.x` Series
 
-In **`v3.0`**, the recommended 64 GB `DeepSeek-V4-Flash-0731` checkpoint is **[`DeepSeek-V4-Flash-0731-MaxQ-v4`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF)** (`57.99 GiB` / `62,270,037,248 B`, `--preset dsv4-maxq`), using **100% standard `ggml` types (`0` custom types)** with `34`-layer `2048 -> 1792` ConeCollapse (`wiki-alt.txt` 51-chunk `PPL = 6.8592`, `KLD = 0.6485`, `Top-1 = 73.28%`; see [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)).
+In **`v3.1.0`**, the single recommended and default 64 GB `DeepSeek-V4-Flash-0731` checkpoint (`./install.sh --preset dsv4-maxq`) is **[`DeepSeek-V4-Flash-0731-MaxQ-v4`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF)** (`57.99 GiB` / `62,270,037,248 B`), built 100% donor-free using **100% standard `ggml` types (`0` custom types)** with `34`-layer `2048 -> 1792` ConeCollapse and FP64 Woodbury DualGram (`wiki-alt.txt` 51-chunk `PPL = 6.8592`, `KLD = 0.6485`, `Top-1 = 73.28%`; native CPU, Apple Metal `27.0 t/s` M5 Max, CUDA & Vulkan; see [`benchmarks/QUALITY_GATE_VQ3_64.md`](../benchmarks/QUALITY_GATE_VQ3_64.md)).
 
-For historical comparison, `v2.5.3` shipped four earlier 3-shard `DeepSeek-V4-Flash-0731` checkpoints (in `v3.0+`, custom `Fractal-64` and `LUT-VQ3-64` use zero-collision IDs `GGML_TYPE_FRACTAL_64 = 44` and `GGML_TYPE_VQ3_64 = 45` via [`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch)):
+For historical comparison only, `v2.5.x` shipped earlier 3-shard checkpoints using retired pre-`v3.0` custom IDs (in `v3.0+`, custom `Fractal-64` and `LUT-VQ3-64` moved to zero-collision IDs `GGML_TYPE_FRACTAL_64 = 44` and `GGML_TYPE_VQ3_64 = 45` via [`patches/llama-modchip-v3.1.patch`](../patches/llama-modchip-v3.1.patch); legacy `dsv4-maxq-fractal` / `dsv4-vq3` / `dsv4-fractal` / `dsv4-ablit` presets in `install.sh` now redirect cleanly to `dsv4-maxq` `MaxQ-v4`):
 
-- **Safety-Aligned Default — [`DeepSeek-V4-Flash-0731-MaxQ-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,160` B, `57.54–58.13 GiB` `VmRSS`, `./modchip setup` default `dsv4-maxq`):**
-  - Donor-free single-pass quantization across all `1,328 / 1,328` weight tensors directly from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe23eabc4c98b48bffcef5a386062`): `174` dense 100%-active bottleneck tensors (`token_embd`, `output`, `43× attn_q_a`, `43× ffn_{gate,up,down}_shexp` -> `173 × Q6_K + 1 × Q8_0`), `317` MLA/Indexer tensors (`Fractal-64`, `GGML_TYPE_Q2_0 = 42`, `3.75 bpw`), and all `129` 3D routed-MoE tensors quantized single-pass with `@antirez`'s `1.5M`-token `routed-moe-ds4-1p5m.dat` (`@ f71f23d552d6`, calibrated `2026-05-12` on April `DeepSeek-V4-Flash` `chat-v2` activations).
-  - Achieves standalone `llama-perplexity` **`Final estimate: PPL = 7.2977 ± 0.0504` across all `51` chunks (`143,565` scored positions) and `7.3180 ± 0.1039` at chunk `12` (`33,780` scored positions)** on `AtomicChat/dsv4-eval-artifacts` `wiki-alt.txt` (`-c 5632 -b 5632`; vs `4.5381` / `4.4474` on `150.75 GiB` `MXFP4_MOE-BF16`, `5.9734` on `76.87 GiB` `UD-IQ1_S`, and `6.3813` on `65.42 GiB` `AD-IQ1_M` `Mean PPL(Q)` on `8× RTX 5090`), **`11.6139 ± 0.5845` `PPL`** on `WikiText-2` (`wiki.test.raw`, `8,192` tok; within `< 0.15σ` of `Fractal-64` `11.5288 ± 0.5563`), **`70.0 / 80.0` Functional Quality** (`30/30` Tools, `20/30` Code, `20/20` Needle; `89.56 / 100.0` under `--target-tps 9.0` at `8.80 tok/s` `78.7%` PVS acc, `8.66 tok/s` pure `N=1` `tg64`) on [`benchmarks/eval_quality_and_tools.py`](../benchmarks/eval_quality_and_tools.py), and **`8 / 8`** on the dual-use technical security audit.
-- **Compact Safety-Aligned Hybrid — [`DeepSeek-V4-Flash-0731-VQ3`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-VQ3-64GB-CPU-GGUF) (`56.40 GiB` / `60,558,856,960` B, `--preset dsv4-vq3`):**
-  - Preserves **100% of MLA attention and compressor projections** in **`Fractal-64` (`GGML_TYPE_Q2_0 = 42`, `3.75 bpw`)**, boundary shared experts (`blk.0..4`, `blk.39..42`) and all 43 `ffn_down_shexp` in `Q5_K`/`Q6_K`, encodes the **68 interior pre-`SiLU` shared-expert projections (`blk.5..38` `ffn_gate_shexp` & `ffn_up_shexp`)** into **`LUT-VQ3-64` (`GGML_TYPE_VQ3_0 = 43`, `24 B / 64 W = 3.00 bpw`)**, and retains calibrated `gate_exps`/`up_exps` donor tensors from `Unsloth` (`UD-IQ1_S @ fbbb5b93fb787c21338159b0af3318bb3f4d9768`) paired with `SwiGLU-H2` on `ffn_down_exps` (`wiki-alt.txt` `ctx=5632` 12c `PPL = 7.6579 ± 0.1077`, `WikiText-2` `PPL = 12.2345 ± 0.5976`, `64.0 / 80` Functional Gate, `0.8409 / 0.4397 nats` lineage KLD vs `MaxQ v2.5.3`). Cross-platform pure-`Fractal-64` [`DeepSeek-V4-Flash-0731-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-Fractal-64GB-CPU-GGUF) (`56.57 GiB` / `60,739,343,104` B, `--preset dsv4-fractal`) shares the `Unsloth + SwiGLU-H2` routed MoE with `Q5_K`/`Q6_K` shared experts (`WikiText-2` `PPL = 11.5288 ± 0.5563`, `64.0 / 80` Functional Gate, `0.8437 / 0.4373 nats` lineage KLD vs `MaxQ v2.5.3`).
-- **Aggressive 255-Tensor Full-VQ3 Ablation (`--aggressive`, `56.07 GiB` disk / `58.31 GiB` `VmRSS`):**
-  - Also encodes MLA expansion projections (`attn_q_b`, `attn_output_a`, `compressor_*`) and all 43 `ffn_gate_shexp` + `ffn_up_shexp` tensors into `VQ3_0`, boosting raw `N=1` `tg64` decode by **`+16.9%` (`9.05 tok/s` vs `7.74 tok/s`)**, `pp128` prefill by **`+8.8%` (`41.11 tok/s`)**, and agentic tool bursts to **`19.4–25.3 tok/s`**.
-- **Opt-In Uncensored Single-Pass Variant — [`DeepSeek-V4-Flash-0731-Abliterated-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-Abliterated-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,224` B, `--preset dsv4-ablit`):**
-  - Applies the identical `1,328`-tensor single-pass layout (`--mode abliterated --hf-repo prem-research/DeepSeek-V4-Flash-0731-abliterated --hf-rev 457210de3a9d`) to `prem-research/DeepSeek-V4-Flash-0731-abliterated` (`WikiText-2` `PPL = 11.3944 ± 0.5650`, **`0.0959 / 0.0512 nats` step-0/matched KLD & `90.7%` Top-1 / `99.4%` Top-5 match vs `MaxQ v2.5.3`**, `70.0 / 80` Functional Gate). Requires explicit confirmation (`[y/N]` or `--accept-abliterated`); intended strictly for authorized offline security research and auditing.
+- **Historical `v2.5.3` Single-Pass — [`DeepSeek-V4-Flash-0731-MaxQ-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-MaxQ-Fractal-64GB-CPU-GGUF) (`56.93 GiB` / `61,129,364,160` B, `57.54–58.13 GiB` `VmRSS`, superseded by `MaxQ-v4`):**
+  - Donor-free single-pass quantization across all `1,328 / 1,328` weight tensors (`173 × Q6_K + 1 × Q8_0` dense bottlenecks, `317` MLA/Indexer tensors in `Fractal-64`, `129` 3D routed-MoE tensors weighted by `@antirez`'s `1.5M`-token `routed-moe-ds4-1p5m.dat`), achieving `wiki-alt.txt` 51-chunk `PPL = 7.2977 ± 0.0504` (`WikiText-2` `11.6139 ± 0.5845`, `70.0 / 80.0` Functional Quality).
+- **Historical `v2.5.x` Compact Hybrid — [`DeepSeek-V4-Flash-0731-VQ3`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-VQ3-64GB-CPU-GGUF) (`56.40 GiB`, superseded by `MaxQ-v4`) & [`DeepSeek-V4-Flash-0731-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-Fractal-64GB-CPU-GGUF) (`56.57 GiB`):**
+  - Retained `Fractal-64` on MLA/compressors and `LUT-VQ3-64` on interior shared experts (`wiki-alt.txt` 12c `PPL = 7.6579 ± 0.1077`, `WikiText-2` `12.2345` / `11.5288`, `64.0 / 80` Functional Gate).
+- **Historical `v2.5.3` Opt-In Uncensored — [`DeepSeek-V4-Flash-0731-Abliterated-Fractal`](https://huggingface.co/Synchopate/DeepSeek-V4-Flash-0731-Abliterated-Fractal-64GB-CPU-GGUF) (`56.93 GiB`, superseded in `v3.1.0` by `qwen38-64gb-ablit` for 64 GB opt-in uncensored deployment):**
+  - Single-pass `1,328`-tensor layout on `prem-research/DeepSeek-V4-Flash-0731-abliterated` (`WikiText-2` `11.3944 ± 0.5650`, `70.0 / 80` Functional Gate).
 
 ```bash
-# Install & SHA-256 verify the recommended v3.0 100%-standard-ggml DeepSeek-V4-Flash MaxQ-v4 checkpoint (57.99 GiB):
+# Install & SHA-256 verify the recommended v3.1.0 100%-standard-ggml DeepSeek-V4-Flash MaxQ-v4 checkpoint (57.99 GiB):
 ./install.sh --preset dsv4-maxq --yes
 
 # Or build the unified llama-modchip v3.1.0 engine from source (llama.cpp de32b268c + patches/llama-modchip-v3.1.patch):
@@ -151,9 +158,9 @@ BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
 To accelerate prompt prefill ($N > 1$) and multi-turn agentic workflows without altering numerical output relative to the single-column kernel (`bit-identical` GEMM tiling), the CPU execution pipeline tiles across all four levels of the Zen 4 / Zen 5 cache hierarchy:
 
 1. **Level 0 — 512-Bit `ZMM` Register-Stationary Multi-Column Kernels (`_1x8`, `_1x4`, `_1x3`, `_1x2`, `1x1`) Across All Quantized Formats**:
-   - Implemented in `ggml/src/ggml-cpu/quants.c` (`Q2_0`, `VQ3_0`) and `ggml/src/ggml-cpu/arch/x86/quants.c` (`IQ1_S`, `IQ2_XXS`, `IQ1_M`, `Q5_K`, `Q6_K`, `VQ3_0`).
+   - Implemented in `ggml/src/ggml-cpu/quants.c` (`FRACTAL_64 = 44`, `VQ3_64 = 45`) and `ggml/src/ggml-cpu/arch/x86/quants.c` (`Q1_0 = 41`, `Q2_0 = 42`, `IQ1_S`, `IQ2_XXS`, `IQ1_M`, `Q5_K`, `Q6_K`, `VQ3_64`).
    - Because `quantize_row_q8_K` scales by `iscale = -127.0f / max`, every quantized input byte in `block_q8_K.qs` lies in `[-127, +127]` (never `-128`). This allows replacing 256-bit AVX2 `vpsignb` loops (`32` weights/instruction) with 512-bit **AVX-512BW** masked negation (`_mm512_abs_epi8`, `_mm512_movepi8_mask`, `_mm512_mask_sub_epi8`, `_mm512_maddubs_epi16`, `_mm512_madd_epi16`, `64` weights/instruction), plus a **7-instruction BMI2 `_pdep_u64` + SWAR XOR-parity** 64-bit sign mask generator for `IQ2_XXS`.
-   - Each weight block (`Q2_0`, `VQ3_0`, `IQ1_S`, `IQ2_XXS`, `IQ1_M`, `Q5_K`, `Q6_K`) is unpacked **once** in `ZMM` registers and multiplied against $K \in \{8, 4, 3, 2\}$ token columns simultaneously, cutting weight-unpacking instruction count by up to **8x**.
+   - Each weight block (`FRACTAL_64`, `VQ3_64`, `Q2_0`, `IQ1_S`, `IQ2_XXS`, `IQ1_M`, `Q5_K`, `Q6_K`) is unpacked **once** in `ZMM` registers and multiplied against $K \in \{8, 4, 3, 2\}$ token columns simultaneously, cutting weight-unpacking instruction count by up to **8x**.
 2. **Level 1 & Level 2 — L1D + L2 Cache-Blocked GEMM & Zero-Remainder `{8, 4, 3, 2}` Decomposition**:
    - In `ggml_compute_forward_mul_mat_one_chunk` and `ggml_compute_forward_mul_mat_id_one_chunk` (`ggml-cpu.c`), an outer L2 loop tiles `blck_0_l2 = 128` weight rows (`64–276 KB` per core $\ll 1\text{ MB}$ L2) while an inner L1D loop tiles $K \in \{8, 4, 3, 2\}$ input columns.
    - Because any integer $M \ge 2$ is a nonnegative linear combination of $\{8, 4, 3, 2\}$ ($5 = 3+2$, $9 = 4+3+2$), ragged MoE expert buckets (`MUL_MAT_ID` across `256` experts) execute with **zero fallback to `1x1` whenever an expert has $\ge 2$ tokens**.

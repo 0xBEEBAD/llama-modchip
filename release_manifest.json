@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "release_version": "3.1.0",
+  "release_tag": "v3.1.0",
+  "patch_file": "patches/llama-modchip-v3.1.patch",
+  "patch_sha256": "abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2",
+  "upstream_llama_cpp": {
+    "commit": "de32b268c",
+    "build_number": 12416
+  },
+  "abi_enums": {
+    "41": { "c_name": "GGML_TYPE_Q1_0", "py_name": "q1_0" },
+    "42": { "c_name": "GGML_TYPE_Q2_0", "py_name": "q2_0" },
+    "43": { "c_name": "GGML_TYPE_F8_E4M3", "py_name": "f8_e4m3" },
+    "44": { "c_name": "GGML_TYPE_FRACTAL_64", "py_name": "fractal_64" },
+    "45": { "c_name": "GGML_TYPE_VQ3_64", "py_name": "vq3_64" }
+  },
+  "rc_synced_headers": [
+    "rc_arbiter_l1.h",
+    "rc_predictor.h",
+    "rc_routecrack2.h",
+    "rc_stockfish.h",
+    "rc_trie_v2.h"
+  ],
+  "paper": {
+    "tex": "paper/main.tex",
+    "pdf": "paper/llama-modchip-paper.pdf",
+    "tarball": "paper/arxiv-submission.tar.gz",
+    "required_version_string": "v3.1.0",
+    "required_sections": [
+      "RouteCrack 2.0",
+      "Qwen3.8",
+      "GGML_TYPE_FRACTAL_64",
+      "GGML_TYPE_VQ3_64"
+    ],
+    "min_figures": 3
+  },
+  "mirrors": {
+    "github_release_base": "https://github.com/synchopate/llama-modchip/releases/download/v3.1.0",
+    "hf_binary_fallback_base": "https://huggingface.co/Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF/resolve/main"
+  },
+  "artifacts": {
+    "llama-server-modchip-linux-x86_64-avx512": "6d9af61a8e4aaf79a3d3f023369154eedca192a8e1b47b251ef14934685d75d6",
+    "llama-server-modchip-linux-x86_64-avx2": "32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee",
+    "llama-server-modchip-linux-x86_64": "32f819919aa494938c909531ad5484c8fa432968d0cfa0c0e2b27a11aa2dc3ee",
+    "llama-cli-modchip-linux-x86_64-avx512": "882ab9e9726a4096b6b66c3ac4a88294ea1f5cdeb63f5b24af80abd70daf6f8a",
+    "llama-cli-modchip-linux-x86_64-avx2": "1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2",
+    "llama-cli-modchip-linux-x86_64": "1bc612972acad80774530d7d423c8676cfdeecbe5f1cfda2691aa2df4d6e28b2",
+    "llama-bench-modchip-linux-x86_64-avx512": "607de30d0396057267d2db9ebd5c0717367e42f97d35d1bef137f8db01facd9f",
+    "llama-bench-modchip-linux-x86_64-avx2": "a1f42baa9116cd2e36dc72382a24cac753a0129901b698c7f351de6b664e0617",
+    "llama-perplexity-modchip-linux-x86_64-avx512": "a880a7a98db53de0a579dd1c15a7efb1a614ecec0787d5319b91e58f51e28a53",
+    "llama-perplexity-modchip-linux-x86_64-avx2": "071845a173efa1dbe1253eced68913a05199445f677fe72dd4e862917cb40724",
+    "llama-quantize-modchip-linux-x86_64-avx512": "97930d119cc54913c2f5b4494566bc563bd18f285722ed41cb16df3de4a36cd2",
+    "llama-quantize-modchip-linux-x86_64-avx2": "1e7b5d489e5b064b10479eed5ecf3d8c48ed9e42a996eada191cada94a97c576"
+  },
+  "github_only_artifacts": {
+    "llama-modchip-v3.1.0-linux-x86_64.tar.gz": "258c85d4d9a4b4953fb82fbfa18cb0e3dd867b00ccff74e04d9867376c4ea60b"
+  },
+  "benchmarks": [
+    {
+      "json": "benchmarks/results/qwen38_routecrack2_v31.json",
+      "docs": [
+        "README.md",
+        "RELEASE_NOTES.md",
+        "benchmarks/QUALITY_GATE_VQ3_64.md",
+        "paper/main.tex"
+      ],
+      "key_metrics": {
+        "configs.config1_pure_n1.aggregate_tok_per_s": 8.78,
+        "configs.config2b_v30_mtp_default.aggregate_tok_per_s": 13.87,
+        "configs.config3_routecrack2.aggregate_tok_per_s": 15.88
+      }
+    },
+    {
+      "json": "benchmarks/results/dsv4_routecrack2_v31.json",
+      "docs": [
+        "README.md",
+        "RELEASE_NOTES.md",
+        "benchmarks/QUALITY_GATE_VQ3_64.md",
+        "paper/main.tex",
+        "docs/DEEPSEEK_V4_OPTIMIZATIONS.md"
+      ],
+      "key_metrics": {
+        "configs.config1_pure_n1.aggregate_tok_per_s": 6.80,
+        "configs.config2_v30_ngram_map.aggregate_tok_per_s": 7.73,
+        "configs.config3_routecrack2.aggregate_tok_per_s": 7.79
+      }
+    },
+    {
+      "json": "benchmarks/results/nemotron_routecrack2_v31.json",
+      "docs": [
+        "README.md",
+        "RELEASE_NOTES.md",
+        "benchmarks/QUALITY_GATE_VQ3_64.md",
+        "paper/main.tex"
+      ],
+      "key_metrics": {
+        "configs.config1_pure_n1.aggregate_tok_per_s": 22.60,
+        "configs.config2_v30_ngram_map.aggregate_tok_per_s": 27.13,
+        "configs.config3_routecrack2.aggregate_tok_per_s": 28.20
+      }
+    }
+  ]
+}

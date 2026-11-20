@@ -323,7 +323,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  1) Qwen3.8-Flash-Next-MaxQ-64GB                 [176.5B (5B Active) · 53.99 GiB · 2 shards]"
         echo "     Default 64GB Flagship (15.88–21.98 t/s RouteCrack 2.0 · PPL 3.43 · 100% std ggml)"
         echo "  2) Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated     [176.5B (5B Active) · 53.99 GiB · 2 shards]"
-        echo "     [OPT-IN UNCENSORED] 64GB Subspace-Abliterated (+0.18% dPPL · PPL 3.44 · RouteCrack 2.0)"
+        echo "     [OPT-IN UNCENSORED] 64GB v3.0-r2 Heretic-2 (0.0818 KLD + blk.48 MTP · RouteCrack 2.0)"
         echo "  3) DeepSeek-V4-Flash-0731-MaxQ-v4               [284B MoE · 57.99 GiB · 3 shards]"
         echo "     284B-A13B Alternative (RouteCrack 2.0 Heavy-MoE Arbiter · 100% std ggml)"
         echo ""
@@ -331,7 +331,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
         echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · RouteCrack 2.0)"
         echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
-        echo "     [OPT-IN UNCENSORED] 32GB Subspace-Abliterated (+0.32% dPPL · PPL 5.82 · RouteCrack 2.0)"
+        echo "     [OPT-IN UNCENSORED] 32GB v3.0-r2 Heretic-2 (0.0818 KLD + blk.48 MTP · RouteCrack 2.0)"
         echo ""
         echo "  [16 GB RAM TIER]"
         echo "  6) NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64           [30B MoE · 13.30 GiB · v3.1 CPU-Turbo]"
@@ -388,7 +388,7 @@ else
             MODEL_FAMILY="qwen38"
             MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB (176.5B (5B Active) · 53.99 GiB · 2 shards)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="c0e7f6a3df86b2fac578e504b9c8b65ac420f28d"
             MODEL_SUBDIR="qwen38-maxq-64gb"
             MODEL_SHARDS=(
                 "Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf"
@@ -404,9 +404,9 @@ else
             MODEL_PRESET="qwen38-64gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB · +0.18% dPPL · 2 shards)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated (176.5B (5B Active) · 53.99 GiB · v3.0-r2 Heretic-2 · 0.0818 KLD + blk.48 MTP · 2 shards)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="0a7cac7fdf7d8c299a5e3979ef79680cfa21b585"
             MODEL_SUBDIR="qwen38-maxq-64gb-ablit"
             MODEL_SHARDS=(
                 "Qwen3.8-Flash-Next-MaxQ-64GB-Abliterated-00001-of-00002.gguf"
@@ -442,7 +442,7 @@ else
             MODEL_FAMILY="qwen38"
             MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB (176.5B (5B Active) · 24.98 GiB Shard 1 + 10.73 GiB Lazy PLE)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="ae6abb575d0a09e7b6178258361f9d933cbe3be2"
             MODEL_SUBDIR="qwen38-maxq-32gb"
             MODEL_SHARDS=(
                 "Qwen3.8-Flash-Next-MaxQ-32GB-00001-of-00002.gguf"
@@ -458,9 +458,9 @@ else
             MODEL_PRESET="qwen38-32gb-ablit"
             MODEL_FAMILY="qwen38"
             IS_ABLITERATED=1
-            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB Shard 1 + Lazy PLE · +0.32% dPPL)"
+            MODEL_LABEL="Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated (176.5B (5B Active) · 24.98 GiB Shard 1 + Lazy PLE · v3.0-r2 Heretic-2 · 0.0818 KLD + blk.48 MTP)"
             MODEL_REPO="Synchopate/Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="a3b3ddaf955e7f11f6d487cbe9bddf0454ce83b9"
             MODEL_SUBDIR="qwen38-maxq-32gb-ablit"
             MODEL_SHARDS=(
                 "Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated-00001-of-00002.gguf"
@@ -477,7 +477,7 @@ else
             MODEL_FAMILY="nemotron"
             MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64 (30B · 13.30 GiB · v3.1.0 CPU-Turbo)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64-CPU-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="d113f815ec2b24d9a1b2cb5f825a318ba37b183b"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf")
             MODEL_SHARD_SIZES=(14282559040)
             MODEL_SHARD_SHA256S=("04a460cdd831002d80b2f47ec5d70e7a92227abcf0a57f31ad73fe0bd50e711f")
@@ -487,7 +487,7 @@ else
             MODEL_FAMILY="nemotron"
             MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB (30B · 13.39 GiB · 100% standard ggml)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="c858974ad057526f42165d789cfe9e04865738f8"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB.gguf")
             MODEL_SHARD_SIZES=(14382336640)
             MODEL_SHARD_SHA256S=("26b884d70a52046a7198c4e01cac397af8bf44584b04cdcf59f896145587db67")
@@ -498,7 +498,7 @@ else
             IS_ABLITERATED=1
             MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64 (30B · 13.30 GiB · v3.1.0)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64-CPU-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="eb42aabff286f7d5b68ac81269b1d670544089cf"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Abliterated-VQ3-64.gguf")
             MODEL_SHARD_SIZES=(14282559488)
             MODEL_SHARD_SHA256S=("75da8372f3896bfacd103f3cb85bf22b729d39cb1efce82fb3c838ab2af53e57")
@@ -534,7 +534,7 @@ else
             MODEL_FAMILY="nemotron"
             MODEL_LABEL="NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64 (30B · 14.36 GiB · v3.1.0)"
             MODEL_REPO="Synchopate/NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64-CPU-GGUF"
-            MODEL_REV="main"
+            MODEL_REV="d1336d5828ed475d4bd6e6604cadf52250a4c818"
             MODEL_SHARDS=("NVIDIA-Nemotron-3.5-30B-A3B-Fractal-64.gguf")
             MODEL_SHARD_SIZES=(15420034624)
             MODEL_SHARD_SHA256S=("3a3a09eac29b5906397ca6a93d2ff0f566fca0bdd365294d067aeb5d0ebf4a1b")
@@ -756,32 +756,49 @@ elif [[ "$SKIP_MODEL" == "1" ]]; then
     echo "[i] --skip-model specified. Skipping model weight download."
     echo "    Expected default GGUF path: $MODEL_PATH"
 else
+    file_stat_key() {
+        python3 - "$1" <<'PYEOF'
+import os, sys
+st = os.stat(sys.argv[1])
+print(f"{st.st_size} {st.st_mtime_ns}")
+PYEOF
+    }
+
     mkdir -p "$MODEL_DEST_DIR"
     NUM_SHARDS="${#MODEL_SHARDS[@]}"
     for idx in "${!MODEL_SHARDS[@]}"; do
         SHARD_NAME="${MODEL_SHARDS[$idx]}"
         SHARD_DEST="${MODEL_DEST_DIR}/${SHARD_NAME}"
+        SHARD_CACHE="${SHARD_DEST}.sha256.cache"
         SHARD_NUM=$((idx + 1))
         if [[ -s "$SHARD_DEST" ]]; then
             if [[ ${#MODEL_SHARD_SIZES[@]} -gt "$idx" && -n "${MODEL_SHARD_SIZES[$idx]}" ]]; then
                 EXISTING_BYTES="$(wc -c < "$SHARD_DEST" | tr -d '[:space:]')"
                 if [[ "$EXISTING_BYTES" != "${MODEL_SHARD_SIZES[$idx]}" ]]; then
                     echo "[!] Existing file ${SHARD_DEST} has unexpected byte size (${EXISTING_BYTES} != ${MODEL_SHARD_SIZES[$idx]}); re-downloading..."
-                    rm -f "$SHARD_DEST"
-                else
-                    if [[ "$MODEL_FAMILY" == "nemotron" && ${#MODEL_SHARD_SHA256S[@]} -gt "$idx" && -n "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
-                        EXISTING_SHA256="$(compute_sha256 "$SHARD_DEST")"
-                        if [[ "$EXISTING_SHA256" != "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
-                            echo "[!] Existing ${SHARD_DEST} is from a pre-v3.0 release (enum 42/43 vs 44/45); re-downloading v3.0 GGUF..."
-                            rm -f "$SHARD_DEST"
-                        else
-                            echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
-                            continue
-                        fi
+                    rm -f "$SHARD_DEST" "$SHARD_CACHE"
+                elif [[ ${#MODEL_SHARD_SHA256S[@]} -gt "$idx" && -n "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
+                    EXPECTED_SHA256="${MODEL_SHARD_SHA256S[$idx]}"
+                    CUR_KEY="$(file_stat_key "$SHARD_DEST" 2>/dev/null || true)"
+                    CACHED_LINE=""
+                    [[ -f "$SHARD_CACHE" ]] && CACHED_LINE="$(head -n 1 "$SHARD_CACHE" 2>/dev/null || true)"
+                    if [[ -n "$CUR_KEY" && "$CACHED_LINE" == "${CUR_KEY} ${EXPECTED_SHA256}" ]]; then
+                        echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}, cached SHA-256): ${SHARD_DEST}"
+                        continue
+                    fi
+                    echo "[*] Verifying SHA-256 of existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_NAME}..."
+                    EXISTING_SHA256="$(compute_sha256 "$SHARD_DEST")"
+                    if [[ "$EXISTING_SHA256" != "$EXPECTED_SHA256" ]]; then
+                        echo "[!] Existing ${SHARD_DEST} failed SHA-256 verification (stale release or corrupted shard; expected ${EXPECTED_SHA256:0:12}..., got ${EXISTING_SHA256:0:12}...). Re-downloading..."
+                        rm -f "$SHARD_DEST" "$SHARD_CACHE"
                     else
+                        [[ -n "$CUR_KEY" ]] && printf '%s %s\n' "$CUR_KEY" "$EXPECTED_SHA256" > "$SHARD_CACHE" 2>/dev/null || true
                         echo "[+] Found verified existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
                         continue
                     fi
+                else
+                    echo "[+] Found existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
+                    continue
                 fi
             else
                 echo "[+] Found existing GGUF file (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
@@ -825,6 +842,10 @@ else
         fi
 
         mv "${SHARD_DEST}.part" "$SHARD_DEST"
+        if [[ ${#MODEL_SHARD_SHA256S[@]} -gt "$idx" && -n "${MODEL_SHARD_SHA256S[$idx]}" ]]; then
+            NEW_KEY="$(file_stat_key "$SHARD_DEST" 2>/dev/null || true)"
+            [[ -n "$NEW_KEY" ]] && printf '%s %s\n' "$NEW_KEY" "${MODEL_SHARD_SHA256S[$idx]}" > "$SHARD_CACHE" 2>/dev/null || true
+        fi
         echo "[+] Verified (${SHARD_NUM}/${NUM_SHARDS}): ${SHARD_DEST}"
     done
     MODEL_PATH="${MODEL_DEST_DIR}/${DEFAULT_MODEL_NAME}"

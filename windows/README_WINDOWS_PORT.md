@@ -1,6 +1,6 @@
 # Unified `llama-modchip v3.1.0` Engine on Windows (`Qwen3.8`, `DeepSeek-V4 284B`, & `Nemotron-30B`)
 
-In **`v3.1.0`**, **`Qwen3.8-Flash-Next-MaxQ-64GB`** (`53.99 GiB`), **`Qwen3.8-Flash-Next-MaxQ-32GB`** (`35.71 GiB`), **`DeepSeek-V4-Flash-0731-MaxQ-v4`** (`57.99 GiB`), and **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** (`~13.3 GiB`) use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched), while CPU-Turbo **`NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64`** (`13.30 GiB`) uses zero-collision **`GGML_TYPE_FRACTAL_64 = 44`** (`30 B / 64 W`) and **`GGML_TYPE_VQ3_64 = 45`** (`24 B / 64 W`).
+In **`v3.1.0`**, **`Qwen3.8-Flash-Next-MaxQ-64GB`** (`53.99 GiB`), **`Qwen3.8-Flash-Next-MaxQ-32GB`** (`35.71 GiB`), **`DeepSeek-V4-Flash-0731-MaxQ-v4`** (`57.99 GiB`), and **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB`** (`13.39 GiB`) use **100% standard `ggml` tensor types** (`Q1_0 = 41`, `Q2_0 = 42`, `F8_E4M3 = 43` untouched), while CPU-Turbo **`NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64`** (`13.30 GiB`) uses zero-collision **`GGML_TYPE_FRACTAL_64 = 44`** (`30 B / 64 W`) and **`GGML_TYPE_VQ3_64 = 45`** (`24 B / 64 W`).
 
 `AVVIA_MODCHIP.bat` (`modchip_win.ps1`) remains the GPU+CPU hybrid launcher for 16 GB standard GGUFs (`Qwen3`, `Nemotron Q4_0` / `MaxQ-16GB`, `Nemotron-H-8B`). For the unified `v3.1.0` CPU engine (**`RouteCrack 2.0` `--spec-type routecrack2`** across `Qwen3.8-MaxQ-64GB/32GB`, `DeepSeek-V4-Flash 284B` ConeCollapse, and `Nemotron VQ3-64` AVX-512 VBMI), use the workflow below.
 

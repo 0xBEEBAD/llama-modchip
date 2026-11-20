@@ -1,6 +1,6 @@
 # llama-modchip on Windows — Porting Notes & Benchmarks (`v3.1.0`)
 
-**Project:** `llama-modchip` `v3.1.0` (`Qwen3.8-Flash-Next-MaxQ-64GB` `53.99 GiB` & `MaxQ-32GB` `35.71 GiB`, `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB`, and `NVIDIA-Nemotron-3.5-30B-A3B` `VQ3-64` `13.30 GiB` / `MaxQ-16GB` `~13.3 GiB` / `Abliterated-VQ3-64` `13.30 GiB`)
+**Project:** `llama-modchip` `v3.1.0` (`Qwen3.8-Flash-Next-MaxQ-64GB` `53.99 GiB` & `MaxQ-32GB` `35.71 GiB`, `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB`, and `NVIDIA-Nemotron-3.5-30B-A3B` `VQ3-64` `13.30 GiB` / `MaxQ-16GB` `13.39 GiB` / `Abliterated-VQ3-64` `13.30 GiB`)
 **Test machine:** AMD Ryzen 7 9800X3D (8C/16T, 96 MB L3) · 64 GB DDR5 · NVIDIA RTX 4070 Ti 12 GB · NVMe PCIe 5.0
 **OS:** Windows 11 Pro · engine built with MinGW-w64 GCC (UCRT64) + CMake + Ninja, `-march=native` (AVX-512F/BW/VBMI/VNNI/BF16)
 **Original Port & 1M-Context Verification:** [`@MR1KRAKEN`](https://github.com/MR1KRAKEN) ([PR #27](https://github.com/synchopate/llama-modchip/pull/27), [Issue #28](https://github.com/synchopate/llama-modchip/issues/28)); x64 AVX-512 ABI & `VQ3` update in `commit 54c89bf` ([Issue #31](https://github.com/synchopate/llama-modchip/issues/31)); unified `v3.1.0` `RouteCrack 2.0` rebase on `llama.cpp` `de32b268c`
@@ -60,10 +60,10 @@ Context scaling: 32K → 6.7, 128K → 6.9, 256K → 6.6 tok/s. The full **1M co
 
 ## 5. Why a 12 GB GPU does not help `DeepSeek-V4 284B`
 
-1. MoE experts occupy ~54 GB of the 56.4–56.6 GiB checkpoint — only 5–7 of 43 layers fit in 12 GB VRAM (~15% of the work).
-2. Custom `Q2_0` (`type 42`) and `VQ3_0` (`type 43`) kernels are CPU-only on Windows/Linux (no CUDA/Vulkan shader). Offloading requires pinning those tensors to CPU (`-ot "blk\.\d+\.(attn_.*|indexer.*|ffn_(gate|up)_shexp)\.weight=CPU"`), forcing PCIe synchronization every layer that costs more than partial MoE offload saves.
+1. MoE experts occupy ~55 GB of the 57.99 GiB `MaxQ-v4` checkpoint — only 5–7 of 43 layers fit in 12 GB VRAM (~15% of the work), so PCIe transfer synchronization between GPU and CPU layers costs more than partial MoE offload saves.
+2. Note also that custom `GGML_TYPE_FRACTAL_64` (`type 44`) and `GGML_TYPE_VQ3_64` (`type 45`) kernels (used on `Nemotron VQ3-64` / `Fractal-64`) are CPU-only on Windows/Linux (no CUDA/Vulkan shader; Apple Metal supports `type 44`). For CUDA/Vulkan hybrid GPU+CPU offload on 16 GB models, select 100% standard `ggml` checkpoints (`Nemotron MaxQ-16GB` `13.39 GiB`, `Fractal-MXFP4`, or `Q4_0`) via `windows\AVVIA_MODCHIP.bat`.
 
-Net result: on a 12 GB card `DeepSeek-V4 284B` is faster on CPU alone. (For 30B/14B/8B standard `Q4_0`, `MXFP4`, or `Q3_K_M` checkpoints where the dense trunk runs natively on CUDA/Vulkan, use `windows\AVVIA_MODCHIP.bat` instead.)
+Net result: on a 12 GB card `DeepSeek-V4 284B` is faster on CPU alone. (For 30B/14B/8B standard `Q4_0`, `MXFP4`, or `MaxQ-16GB` checkpoints where the dense trunk runs natively on CUDA/Vulkan, use `windows\AVVIA_MODCHIP.bat` instead.)
 
 ## 6. Operational notes & pitfalls
 
@@ -75,4 +75,4 @@ Net result: on a 12 GB card `DeepSeek-V4 284B` is faster on CPU alone. (For 30B/
 
 ## 7. Summary
 
-`DeepSeek-V4-Flash 284B` (`MaxQ-Fractal` `56.93 GiB`, `VQ3-64` `56.40 GiB`, `Fractal-64` `56.57 GiB`, and `Abliterated-Fractal` `56.93 GiB`) and `Nemotron-3.5-30B-A3B` (`VQ3-64` `13.30 GiB`, `Fractal-64` `14.36 GiB`, and `Abliterated-VQ3-64` `13.30 GiB`) compile and run natively on Windows 11 via `windows\build_patched_engine.ps1` and `windows\AVVIA_DSV4.bat`, delivering **8.11 tok/s unpruned `Top-6` decode / 27.55 tok/s `pp512` prefill on Ryzen 9 9950X3D** and **6.35–8.04 tok/s pure decode / 21.3 tok/s prefill up to 1M context on an 8-core Ryzen 7 9800X3D in 64 GB RAM**.
+All three `v3.1.0` RAM tiers — `Qwen3.8-Flash-Next` (`MaxQ-64GB` `53.99 GiB` & `MaxQ-32GB` `35.71 GiB`), `DeepSeek-V4-Flash 284B` (`MaxQ-v4` `57.99 GiB`, 100% standard `ggml`), and `NVIDIA-Nemotron-3.5-30B-A3B` (`VQ3-64` `13.30 GiB` types `44`/`45`, `MaxQ-16GB` `13.39 GiB` standard `ggml`, and `Fractal-64` `14.36 GiB` type `44`) — compile and run natively on Windows 11 via `windows\build_patched_engine.ps1`, `windows\modchip_dsv4.ps1`, and `windows\modchip_win.ps1`, delivering **8.11 tok/s unpruned `Top-6` decode / 27.55 tok/s `pp512` prefill on Ryzen 9 9950X3D** and **6.35–8.04 tok/s pure decode / 21.3 tok/s prefill up to 1M context on an 8-core Ryzen 7 9800X3D in 64 GB RAM**.

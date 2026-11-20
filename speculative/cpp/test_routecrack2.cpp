@@ -541,6 +541,69 @@ void test_fast_sigmoid_nan_inf_and_remez_precision() {
     std::printf("[PASS] test_fast_sigmoid_nan_inf_and_remez_precision (NaN/Inf safe, max_err=%.2e < 3e-6, sizeof=832 B)\n", max_err);
 }
 
+void test_arbiter_nan_inf_bit_identity() {
+    auto fbits = [](float v) -> uint32_t {
+        uint32_t b = 0;
+        std::memcpy(&b, &v, sizeof(b));
+        return b;
+    };
+
+    const float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float nnan = -std::numeric_limits<float>::quiet_NaN();
+    const float pinf = std::numeric_limits<float>::infinity();
+    const float ninf = -std::numeric_limits<float>::infinity();
+
+    RC2StepFeatures f_zero{};
+    f_zero.recent_accept_ema = 0.0f;
+
+    RC2StepFeatures f_nan{qnan, nnan, qnan, nnan, qnan, nnan, qnan, nnan, qnan, nnan};
+    RC2StepFeatures f_pinf{pinf, pinf, pinf, pinf, pinf, pinf, pinf, pinf, pinf, pinf};
+    RC2StepFeatures f_ninf{ninf, ninf, ninf, ninf, ninf, ninf, ninf, ninf, ninf, ninf};
+    RC2StepFeatures f_mixed_adv{qnan, pinf, ninf, nnan, pinf, ninf, qnan, pinf, ninf, qnan};
+
+    RC2StepFeatures f_partial_adv{0.88f, qnan, 0.70f, pinf, 1.0f, ninf, 0.25f, qnan, 0.72f, pinf};
+    RC2StepFeatures f_partial_clean{0.88f, 0.0f, 0.70f, 0.0f, 1.0f, 0.0f, 0.25f, 0.0f, 0.72f, 0.0f};
+
+    const RC2L1ArbiterWeights * profiles[3] = {
+        &kRC2DefaultArbiter,
+        &kRC2DraftlessArbiter,
+        &kRC2HeavyMoEDraftlessArbiter,
+    };
+
+    uint32_t sig_zero[3] = {};
+    uint32_t sig_part[3] = {};
+    for (int p = 0; p < 3; ++p) {
+        const auto & w = *profiles[p];
+        const float r_zero  = rc2_l1::predict_accept_prob(f_zero, w);
+        const float r_nan   = rc2_l1::predict_accept_prob(f_nan, w);
+        const float r_pinf  = rc2_l1::predict_accept_prob(f_pinf, w);
+        const float r_ninf  = rc2_l1::predict_accept_prob(f_ninf, w);
+        const float r_mixed = rc2_l1::predict_accept_prob(f_mixed_adv, w);
+        const float r_padv  = rc2_l1::predict_accept_prob(f_partial_adv, w);
+        const float r_pcln  = rc2_l1::predict_accept_prob(f_partial_clean, w);
+
+        assert(std::isfinite(r_zero));
+        assert(fbits(r_nan)   == fbits(r_zero) && "All-NaN must match all-zero bit-identically!");
+        assert(fbits(r_pinf)  == fbits(r_zero) && "All-+Inf must match all-zero bit-identically!");
+        assert(fbits(r_ninf)  == fbits(r_zero) && "All--Inf must match all-zero bit-identically!");
+        assert(fbits(r_mixed) == fbits(r_zero) && "Mixed NaN/+-Inf must match all-zero bit-identically!");
+        assert(fbits(r_padv)  == fbits(r_pcln) && "Partial NaN/+-Inf must match zero-substituted features bit-identically!");
+
+        sig_zero[p] = fbits(r_zero);
+        sig_part[p] = fbits(r_padv);
+    }
+
+    // Golden IEEE-754 reference bits (verified 100% bit-identical across AVX-512, AVX2+FMA, NEON, and scalar)
+    assert(sig_zero[0] == 0x3b1002b0u && sig_zero[1] == 0x3a2e7eb0u && sig_zero[2] == 0x39c8166bu &&
+           "All-NaN/+-Inf output bits drifted from golden cross-ISA IEEE-754 reference!");
+    assert(sig_part[0] == 0x3f7eb63bu && sig_part[1] == 0x3f7e81dau && sig_part[2] == 0x3f7b604au &&
+           "Partial NaN/+-Inf output bits drifted from golden cross-ISA IEEE-754 reference!");
+    std::printf(
+        "[PASS] test_arbiter_nan_inf_bit_identity (zero_bits=%08x/%08x/%08x partial_bits=%08x/%08x/%08x)\n",
+        sig_zero[0], sig_zero[1], sig_zero[2], sig_part[0], sig_part[1], sig_part[2]
+    );
+}
+
 void test_partial_rollback_and_session_lcp_antialiasing() {
     RC2PredictorHub hub;
     hub.init(/*n_vocab=*/129280, /*trie_cap=*/(1u << 14));
@@ -603,6 +666,7 @@ void test_partial_rollback_and_session_lcp_antialiasing() {
 
 int main() {
     test_fast_sigmoid_nan_inf_and_remez_precision();
+    test_arbiter_nan_inf_bit_identity();
     test_partial_rollback_and_session_lcp_antialiasing();
     test_two_zone_index_and_undo_invariants();
     test_anchored_mtp_disambiguation_and_stockfish_refutation();

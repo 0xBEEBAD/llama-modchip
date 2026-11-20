@@ -8,10 +8,10 @@
 ---
 
 > [!NOTE]
-> **`v3.1.0` Multi-Architecture Unification & `RouteCrack 2.0` (`patches/llama-modchip-v3.1.patch`):** Starting with `llama-modchip v3.1.0`, all engine optimizations and **`RouteCrack 2.0`** (`--spec-type routecrack2`, powered by the `832 B` **`RouteCrack 2.0 L1 Micro-Arbiter`** in `common/rc_arbiter_l1.h`) are unified into a single cross-platform patch against `ggml-org/llama.cpp @ de32b268c` with **zero upstream tensor-type collisions** (`GGML_TYPE_Q2_0 = 42` and `GGML_TYPE_F8_E4M3 = 43` remain 100% untouched; `Fractal-64` is `GGML_TYPE_FRACTAL_64 = 44` and `LUT-VQ3-64` is `GGML_TYPE_VQ3_64 = 45`):
-> - **`64 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-64GB`, `53.99 GiB` & `DeepSeek-V4-Flash-0731-MaxQ-v4`, `57.99 GiB`):** Compresses `Qwen3.8`'s `320M`-row PLE table from `26.82 GiB` to `10.73 GiB` (`PCA-Wiener D=256 + RaBitQ Q1_0 = 41`) so all `512/512` routed experts + `FP64 Woodbury DualGram Q2_0 (42)` + built-in `blk.48` `NextN` MTP run at **`3.4325` blind `wiki-alt.txt` PPL (`-46.6%` KLD vs `54.40 GiB` pruned competitors)** and **`12.66 tok/s` `tg128` (`93.0%` MTP accept, `71.97 tok/s` `pp512`, `VmHWM = 45.08 GiB`)** via 512-bit `Q1_0`/`Q2_0`/`MXFP4` kernels, 8-`zmm` multi-threaded `GATED_DELTA_NET`, zero-copy 3D MoE `--repack`, and non-convoy `-t $((N_CORES - 1)) --poll 0` scheduling.
-> - **`32 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-32GB`, `35.71 GiB` total = `24.98 GiB` Shard 1 + `10.73 GiB` Lazy NVMe PLE):** Keeps `42` ConeCollapsed (`K = 512`) + `7` full-width (`K = 640`) trunk/MTP layers hot in RAM while demand-paging Shard 2 PLE via `mmap` (`2 MiB` inward-aligned `MADV_HUGEPAGE`), verified under Linux Cgroup v2 (`memory.max = 28.5 GiB`, `MemorySwapMax = 0`, `VmHWM = 26.91 GiB <= 28.5 GiB`, **`11.45–14.29 tok/s` `draft-mtp`**, **`38.5 ms` / `~19 ms` `/dev/shm` Slot-0 hybrid state restore**).
-> - **`16 GB` Tier (`NVIDIA-Nemotron-3.5-30B-A3B`, `13.30 GiB` `VQ3-64` `v3.0` & `~13.3 GiB` `MaxQ-16GB` Standard `ggml`):** Detailed in Sections 1–5 below.
+> **`v3.1.0` Multi-Architecture Unification & `RouteCrack 2.0` (`patches/llama-modchip-v3.1.patch`):** Starting with `llama-modchip v3.1.0`, all engine optimizations and **`RouteCrack 2.0`** (`--spec-type routecrack2`, powered by the `832 B` **`RouteCrack 2.0 L1 Micro-Arbiter`** in `common/rc_arbiter_l1.h`) are unified into a single cross-platform patch against `ggml-org/llama.cpp @ de32b268c` (`b12416`) with **zero upstream tensor-type collisions** (`GGML_TYPE_Q1_0 = 41`, `GGML_TYPE_Q2_0 = 42`, and `GGML_TYPE_F8_E4M3 = 43` remain 100% untouched; `Fractal-64` is `GGML_TYPE_FRACTAL_64 = 44` and `LUT-VQ3-64` is `GGML_TYPE_VQ3_64 = 45`):
+> - **`64 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-64GB`, `53.99 GiB` & `DeepSeek-V4-Flash-0731-MaxQ-v4`, `57.99 GiB`):** Compresses `Qwen3.8`'s `320M`-row PLE table from `26.82 GiB` to `10.73 GiB` (`PCA-Wiener D=256 + RaBitQ Q1_0 = 41`) so all `512/512` routed experts + `FP64 Woodbury DualGram Q2_0 (42)` + built-in `blk.48` `NextN` MTP achieve **`3.4325` blind `wiki-alt.txt` PPL (`-46.6%` KLD vs `54.40 GiB` pruned competitors)** and **`15.88 avg / 21.98 peak tok/s`** under `RouteCrack 2.0` (`+80.8%` vs `N=1`, `+14.5%` vs `v3.0 draft-mtp`, `71.97 tok/s` `pp512`, `VmHWM = 45.08 GiB`). `DeepSeek-V4 MaxQ-v4` (`57.99 GiB`, 100% std `ggml`) delivers `6.8592` 51-chunk `wiki-alt` PPL and **`7.79 avg / 12.31 peak tok/s`** on CPU (`27.0 tok/s` on M5 Max Metal).
+> - **`32 GB` Tier (`Qwen3.8-Flash-Next-MaxQ-32GB`, `35.71 GiB` total = `24.98 GiB` Shard 1 + `10.73 GiB` Lazy NVMe PLE):** Keeps `42` ConeCollapsed (`K = 512`) + `7` full-width (`K = 640`) trunk/MTP layers hot in RAM while demand-paging Shard 2 PLE via `mmap` (`2 MiB` inward-aligned `MADV_HUGEPAGE`), verified under Linux Cgroup v2 (`memory.max = 28.5 GiB`, `MemorySwapMax = 0`, `VmHWM = 26.91 GiB <= 28.5 GiB`, **`11.45–14.29 tok/s`**, **`38.5 ms` / `~19 ms` `/dev/shm` Slot-0 hybrid state restore**).
+> - **`16 GB` Tier (`NVIDIA-Nemotron-3.5-30B-A3B`, `13.30 GiB` `VQ3-64` CPU-Turbo & `13.39 GiB` `MaxQ-16GB` 100% Standard `ggml`):** `28.20 avg / 42.18–60.4 tok/s` under `RouteCrack 2.0` (`14.304 GiB <= 15.0 GiB` cgroup on `MaxQ-16GB`); detailed in Sections 1–5 below.
 
 ---
 
@@ -479,7 +479,7 @@ Inspecting the binary GGUF metadata of modern 30B Sparse MoE models reveals a ma
   - `expert_count = 128`, `expert_used_count = 8` routed experts per token.
   - Although the GGUF converter omits a `qwen3moe.expert_weights_norm` metadata key, **`llama.cpp` hardcodes `norm_w = true` (`LLM_FFN_SILU, true`) directly inside `src/models/qwen3moe.cpp:144` (`build_moe_ffn`)** (as well as `qwen35moe.cpp:514`, `granite.cpp:277`, `kimi-linear.cpp:508`, and `mellum.cpp:186`)!
 
-By hooking `hparams.n_expert_used` in `src/llama-model.cpp` via `LLAMA_MOE_TOP_K=4` (`patches/zen5-nemotron-256k-optimizations.patch`):
+By hooking `hparams.n_expert_used` in `src/llama-model.cpp` via `LLAMA_MOE_TOP_K=4` ([`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch)):
 1. **33.3% to 50.0% Reduction in Routed MoE DRAM Traffic**:
    - On **Nemotron 3.5 30B-A3B**, active routed experts drop from `6 -> 4` (total effective expert-units drop from `8 -> 6`), cutting per-token DDR5 weight streaming from `~2.45 GB/token` down to **`1.88 GB/token` (`-33.3%` routed MoE bandwidth)**.
    - On **Qwen3-30B-A3B**, active routed experts drop from `8 -> 4` (`-50.0%` routed MoE bandwidth).
@@ -498,22 +498,22 @@ Furthermore, in the official `NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf` (
 
 #### 1. What Builds on Known Quantization Literature vs. What Is New Here
 - **Foundations from existing literature (`K-quants`, `QLoRA`, `NF4` / `IQ4_NL`)**: Two-level hierarchical block scaling (a floating-point super-block scale combined with integer sub-block scales) and non-uniform lookup tables decoded via `VPSHUFB` (`_mm256_shuffle_epi8`) are established techniques in `Q3_K`/`Q4_K` and `IQ4_NL`/`MXFP4`.
-- **What is new in `Fractal-64` (`block_q2_0`, `QK2_0 = 64`, `30 bytes` = `3.75 bpw`)**:
-  1. **Breaking the `QK_K = 256` Geometry Trap via an `8×8` Micro-Block Hierarchy (`QK2_0 = 64`, 8 sub-blocks of 8 weights)**: By shrinking the super-block from `256` to `64` (dividing `1856` into `29` blocks and `2688` into `42` blocks with **zero fallback tensors**) and shrinking each sub-block to **8 weights** (`1` sub-scale every `8` weights vs every `16` or `32` weights in `Q3_K`/`MXFP4`), local outlier variance is captured at twice the spatial resolution.
+- **What is new in `Fractal-64` (`block_fractal_64`, `GGML_TYPE_FRACTAL_64 = 44`, `QK_FRACTAL_64 = 64`, `30 bytes` = `3.75 bpw`)**:
+  1. **Breaking the `QK_K = 256` Geometry Trap via an `8×8` Micro-Block Hierarchy (`QK_FRACTAL_64 = 64`, 8 sub-blocks of 8 weights)**: By shrinking the super-block from `256` to `64` (dividing `1856` into `29` blocks and `2688` into `42` blocks with **zero fallback tensors**) and shrinking each sub-block to **8 weights** (`1` sub-scale every `8` weights vs every `16` or `32` weights in `Q3_K`/`MXFP4`), local outlier variance is captured at twice the spatial resolution.
   2. **Shifted Positive 4-Bit Sub-Scale Window (`mult[b] = 4 + sc[b] ∈ {4..19}`)**: Across 8 sub-blocks of 8 weights, the ratio between the largest and smallest 8-weight sub-block scale rarely drops below `4/19`, making raw 4-bit codes `{0..3}` dead codes. Shifting the 4-bit nibble `sc[b] ∈ {0..15}` to `mult[b] = 4 + sc[b] ∈ {4..19}` boosts sub-scale resolution by **`+31%`** at zero bit overhead.
   3. **Zero-Instruction Sub-Scale Multiplication Fused Inside `vpmaddwd` (`_mm256_madd_epi16(p01, vmult01)`)**: In standard `llama.cpp` AVX2 kernels (`MXFP4`, `Q4_0`), after `_mm256_maddubs_epi16` produces `16 × int16_t` pairwise products, `_mm256_madd_epi16(p01, ones)` multiplies by `1` merely to widen and sum pairs into `8 × int32_t`. Because an 8-weight sub-block maps to **4 consecutive `int16_t` lanes** after `maddubs`, we replace `ones` with `vmult01` (`{4..19}`), fusing sub-block rescaling and `int16 -> int32` horizontal accumulation into a single 1-cycle `vpmaddwd` instruction!
   4. **Interleaved Bit-Plane Unpacking + `_MM_HINT_NTA` Streaming**: The 64 upper bits (`qh[8]`) are interleaved across even/odd 8-byte halves so `_mm_unpacklo_epi64(qh_lo, _mm_srli_epi16(qh_lo, 1))` aligns all 64 3-bit indices for `_mm256_shuffle_epi8(lut256, idx)` (`lut = {-14, -8, -4, -1, +1, +4, +8, +14}`), while `_MM_HINT_NTA` bypasses the 64 MB L3 cache.
 
 #### 2. Struct Layout (`ggml/src/ggml-common.h`) & SQNR on True `BF16` Nemotron Weights
 ```c
-#define QK2_0 64
+#define QK_FRACTAL_64 64
 typedef struct {
     ggml_half d;          // master FP16 super-block scale (2 bytes)
     uint8_t   scales[4];  // 8 x 4-bit shifted sub-scales (low/high nibbles) for 8x8 sub-blocks, mult = (4 + s) in {4..19}
     uint8_t   qs[16];     // lower 2 bits for 64 3-bit non-linear indices
     uint8_t   qh[8];      // upper 1 bit for 64 3-bit non-linear indices
-} block_q2_0;
-static_assert(sizeof(block_q2_0) == 30, "wrong q2_0 block size/padding");
+} block_fractal_64;       // GGML_TYPE_FRACTAL_64 = 44 (upstream GGML_TYPE_Q2_0 = 42 untouched)
+static_assert(sizeof(block_fractal_64) == 30, "wrong fractal_64 block size/padding");
 ```
 Measured on true unquantized `BF16` expert weights from `NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16.gguf` (`58.84 GiB`):
 - **`Q4_0` (`4.50 bpw`, block 32)**: `21.02 dB` SQNR
@@ -522,7 +522,7 @@ Measured on true unquantized `BF16` expert weights from `NVIDIA-Nemotron-3.5-Lig
 
 #### 3. Three-Way Live Hardware Verification (`benchmarks/eval_quality_and_tools.py`, AMD Zen 5)
 
-Built via `scripts/build_fractal_moe_gguf.sh` (`--profile fractal64` from `BF16`, or `--profile mxfp4` when re-quantizing from `Q4_0`), keeping the 6 GQA attention layers (`attn_q`, `attn_k`, `attn_v`, `attn_output`), `ssm_out`, and `output.weight` at `Q8_0` (full report and raw JSON outputs in [`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) and [`benchmarks/results/`](benchmarks/results/)):
+Quantized directly from `BF16` (`Fractal-64-BF16`) or `Q4_0` (`Fractal-MXFP4`), keeping the 6 GQA attention layers (`attn_q`, `attn_k`, `attn_v`, `attn_output`), `ssm_out`, and `output.weight` at `Q8_0` (distributed pre-verified via `./install.sh --preset nemotron-fractal` / `nemotron-vq3` / `nemotron-maxq-16gb`; full report and raw JSON outputs in [`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) and [`benchmarks/results/`](benchmarks/results/)):
 
 | Metric / Suite | `Baseline-Q4_0` (Official GGUF) | `Fractal-MXFP4` (from `Q4_0`) | **`Fractal-64-BF16` (from `BF16` `58.84 GiB`)** | `Fractal-64-BF16` vs Baseline |
 | :--- | :---: | :---: | :---: | :---: |
@@ -572,17 +572,18 @@ Scaling CPU inference from a `30B` MoE (`3.0B` active) to **`DeepSeek-V4-Flash` 
 2. **The 256-Expert SwiGLU Degradation Wall**: Naive uncalibrated `IQ1_S` (`1.5625 bpw`) quantization across all 256 routed experts collapses SwiGLU gating accuracy because high-norm activation channels in $W_{\text{gate}}^{(e)} \odot W_{\text{up}}^{(e)}$ are quantized with uniform MSE weight.
 3. **3D Multi-Head `wo_a` L1D Thrashing & MLA Sparse Gather Stalls**: DeepSeek-V4's 3D attention output projection (`wo_a`, `ne02 > 1`) overflows the `48 KB` Zen 5 L1D cache when tiled over `i01` (`TILE_I1 = 32`), and its sparse indexer attention mask (`csa_top_k_mask`) gathers non-contiguous historical latent rows from DDR5.
 
-We solve all three walls in `patches/deepseek-v4-flash-fractal-256k.patch`, `scripts/transcode_dsv4.c`, and `scripts/transcode_dsv4_shard.py` (invoked via `scripts/build_fractal_moe_gguf.sh --deepseek`):
+We solve all three walls in the unified [`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch) runtime (paired with donor-free `DeepSeek-V4-Flash-0731-MaxQ-v4` `57.99 GiB` 100% standard `ggml` ConeCollapse + FP64 Woodbury DualGram, superseding historical `v2.4` transcoding):
 
-#### 1. Analytical Second-Order `SwiGLU-H2` Importance Quantization + `Fractal-64` (`Q2_0`, `3.75 bpw`) MLA Transcoding (`76.87 GiB -> 56.56 GiB`)
-- **Closed-Form `SwiGLU-H2` Hessian Diagonal (`transcode_moe_exps` in `scripts/transcode_dsv4.c`)**:
+#### 1. Donor-Free ConeCollapse + Woodbury DualGram (`MaxQ-v4` `57.99 GiB`) & Analytical Second-Order `SwiGLU-H2`
+- **Donor-Free `MaxQ-v4` (`57.99 GiB`, 100% Standard `ggml`):** Quantizes all `1,362` tensors directly from `deepseek-ai/DeepSeek-V4-Flash-0731` with zero custom types (`9` full-width $K=2048$ anchor layers + `34` $K=1792$ ConeCollapse layers with shrunk centroid bias `GGML_OP_ADD_ID` + FP64 Woodbury DualGram $N_C=384$), reaching `6.8592` 51-chunk (`6.8471` unseen 49-chunk) `wiki-alt.txt` PPL across CPU, Apple Metal (`27.0 t/s` M5 Max), CUDA, and Vulkan.
+- **Closed-Form `SwiGLU-H2` Hessian Diagonal (Analytical Second-Order Importance):**
   For each expert $e \in \{0\dots 255\}$ and intermediate channel $j \in \{0\dots d_{\text{ff}}-1\}$, the SwiGLU output enters `ffn_down_exps` as $h_{e,j}(x) = \text{SiLU}(w_{\text{gate},e,j}^\top x) \cdot (w_{\text{up},e,j}^\top x)$. Under isotropic unit-variance input activations, the expected second moment of channel $j$—which scales the second-order quantization error of row $j$ in `ffn_down_exps`—is proportional to the product of the squared row norms of the paired Gate and Up slices:
   $$I_{e,j} = \left\|W_{\text{gate}}^{(e)}[j,:]\right\|_2^2 \cdot \left\|W_{\text{up}}^{(e)}[j,:]\right\|_2^2$$
-  In `transcode_moe_exps()`, we dequantize the paired `ffn_gate_exps` and `ffn_up_exps` tensors simultaneously across OpenMP threads, compute $I_{e,j}$ analytically without requiring an external calibration dataset, and pass $I_{e,j}$ as the `quantize_row_iq1_s` importance vector. Sensitivity-anchored layers (`DOWN_IQ2_LAYERS = {0, 1, 26, 28, 41, 42}` in `IQ2_XXS`, `DOWN_IQ1M_LAYERS = {2, 4, 5, 8, 27, 30, 32, 40}` in `IQ1_M`, and `GATE_UP_KEEP_IQ2 = {1, 4, 26, 28, 40}` in `IQ2_XXS`) preserve critical early/late routing layers, while bulk routed expert layers compress cleanly to `IQ1_S` (`1.5625 bpw`).
-- **Block-64 `Fractal-64` (`Q2_0`, `3.75 bpw`) for Dense MLA & Indexer Tensors**:
-  All dense `Q8_0` (`8.50 bpw`) Multi-Head Latent Attention and Indexer Compressor projections (`attn_q_b`, `attn_output_a`, `attn_output_b`, `attn_compressor_gate`, `attn_compressor_kv`, `attn_kv`, `indexer_compressor_gate`, `indexer_compressor_kv`) are transcoded to `block_q2_0` (`30 bytes / 64 weights = 3.75 bpw`, `-55.9%` byte reduction), while keeping `attn_q_a`, shared experts (`_shexp`), and `output.weight` untouched. Total GGUF size drops from **`76.87 GiB` to `56.56 GiB` (`-20.31 GiB`)**, and live `VmRSS` at full `-c 262144` (`256K`) context is **`58.9 GiB` (`61,772 MB`)** inside a `64 GiB` container.
+  Sensitivity-anchored layers (`{0, 1, 26, 28, 41, 42}` in `IQ2_XXS`, `{2, 4, 5, 8, 27, 30, 32, 40}` in `IQ1_M`) preserve critical early/late routing layers, while bulk routed expert layers compress cleanly to `IQ1_S` (`1.5625 bpw`).
+- **Block-64 `Fractal-64` (`GGML_TYPE_FRACTAL_64 = 44`, `3.75 bpw`)**:
+  Encodes `64` weights in `30 bytes` (`block_fractal_64`, `-55.9%` vs `Q8_0`), supporting both CPU SIMD and register-tiled Apple Metal GPU kernels without colliding with upstream `GGML_TYPE_Q2_0 = 42`.
 
-#### 2. Single-Cycle AVX2 Variable-Shift `ggml_vec_dot_q2_0_q8_0_generic` (`+55%` Speed) & 3D L1D Tiling (`wo_a`)
+#### 2. Single-Cycle AVX2/AVX-512 `ggml_vec_dot_fractal_64_q8_0` (`+55%` Speed) & 3D L1D Tiling (`wo_a`)
 - **Single-Cycle Variable Bit-Shifts (`_mm256_sllv_epi32` / `_mm256_srlv_epi32`)**:
   In `ggml/src/ggml-cpu/quants.c`, unpacking the 64 upper bits (`qh[8]`) and 8×4-bit shifted sub-scales (`scales[4]`) previously used scalar byte extraction. We replace both with vectorized AVX2 variable shifts (`_mm256_sllv_epi32(vqh_bcast, vshift)` and `_mm256_srlv_epi32(_mm256_set1_epi32(sc32), _mm256_setr_epi32(0,4,8,12,16,20,24,28))`) and fuse sub-block rescaling (`mult ∈ {4..19}`) directly into `_mm256_madd_epi16(p01, vmult01)` (`vpmaddwd`), cutting 10M-block `dot_q2_0_q8_0` execution time from `86.5 ms` to **`55.8 ms` (`+55%` faster)**.
 - **3D L1D Cache Tiling (`TILE_I0 = 64` in `ggml/src/ggml-cpu/ggml-cpu.c`)**:
@@ -616,18 +617,34 @@ We solve all three walls in `patches/deepseek-v4-flash-fractal-256k.patch`, `scr
 
 ---
 
-### 3.13. Optimization 13: `LUT-VQ3-64` (`GGML_TYPE_VQ3_0 = 43`, `24 B / 64 W = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B`
+### 3.13. Optimization 13: `LUT-VQ3-64` (`GGML_TYPE_VQ3_64 = 45`, `24 B / 64 W = 3.00 bpw`) via AVX-512 VBMI `VPERMI2B`
 
-Introduced in `v2.5.0` (`vq3/`, `patches/lut-vq3-64-avx512-vbmi.patch`, `patches/vq3_codebook.h`, [`benchmarks/QUALITY_GATE_VQ3_64.md`](benchmarks/QUALITY_GATE_VQ3_64.md)):
+Integrated into the unified [`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch) (`ggml/src/vq3_codebook.h`, [`benchmarks/QUALITY_GATE_VQ3_64.md`](benchmarks/QUALITY_GATE_VQ3_64.md)) at zero-collision slot `GGML_TYPE_VQ3_64 = 45` (preserving upstream `GGML_TYPE_F8_E4M3 = 43` untouched):
 
-1. **Spherical 3D Vector Quantization (`block_vq3_0`, `24 bytes` per `64` weights)**:
+1. **Spherical 3D Vector Quantization (`block_vq3_64`, `24 bytes` per `64` weights)**:
    - Heavy-tailed MoE weights ($\kappa = 3.2–4.8$) concentrate inside the 3D $L_2$ sphere / $L_1$ cross-polytope rather than Cartesian cube corners. `LUT-VQ3-64` stores a `2-byte` `FP16` super-scale `d` plus `22 bytes` (`qs[22]`): the low 7 bits (`qs[k] & 0x7F`) pack `20 × 7-bit` 3D spherical Lloyd-Max indices (`k = 0..19`, stride-22 weight triples) and `2 × 6-bit` 2D tail indices (`k = 20..21`, placed in the lower/upper 64-centroid half of the 128-entry codebook to encode bits `22..23` of `s24`), while bit 7 (`qs[k] >> 7` for `k = 0..21`) packs bits `0..21` of `s24` (`8 × 3-bit` unsigned sub-scales, `mult = 2 + u_b ∈ {2..9}`, `24 B / 64 W = 3.00 bpw`).
    - On uncompressed `BF16` `blk.1.ffn_up_exps.weight`, `LUT-VQ3-64` reaches **`13.57 dB` SQNR (`97.78%` Cosine Similarity)**, `+3.42 dB` above scalar `Q2_K` (`10.15 dB`).
 2. **Register-Resident AVX-512 VBMI `VPERMI2B` Decode**:
-   - The 128-entry 3D `int8` codebook (`384 bytes`) stays in 6 ZMM registers across `_1x8`, `_1x4`, `_1x3`, `_1x2`, and `1x1` kernels, resolving 64 byte lookups per `_mm512_permutex2var_epi8` instruction with zero L1/L2 cache accesses (with unaligned `_mm512_loadu_si512` `.rdata` constant loads for Windows PE/COFF compatibility and AVX2/scalar fallbacks).
+   - The 128-entry 3D `int8` codebook (`384 bytes`) stays in 6 ZMM registers across `_1x8`, `_1x4`, `_1x3`, `_1x2`, and `1x1` kernels, resolving 64 byte lookups per `_mm512_permutex2var_epi8` instruction with zero L1/L2 cache accesses (with unaligned `_mm512_loadu_si512` `.rdata` constant loads for Windows PE/COFF compatibility and AVX2/NEON/scalar fallbacks).
 3. **Domain-Aware Hybrid Checkpoints (`100 / 100` Quality Gate)**:
-   - **`NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64` (`13.30 GiB` shipped Hybrid / `13.08 GiB` full `up_exps`, `16.04 GiB` `VmRSS`)**: Scores **`100.0 / 100.0`** on [`benchmarks/eval_quality_and_tools.py`](benchmarks/eval_quality_and_tools.py) (`24.18 tok/s` E2E, `70.19%` `Stockfish-PVS` acceptance, `-5.67 GiB` RAM vs `Q4_0`).
-   - **`DeepSeek-V4-Flash-0731-VQ3` (`56.40 GiB` shipped Hybrid / `56.07 GiB` aggressive, `58.31 GiB` `VmRSS`)**: Preserves 100% MLA attention in `Fractal-64` (`GGML_TYPE_Q2_0 = 42`) in the shipped 3-shard build, while the 255-tensor `--aggressive` ablation reaches **`9.05 tok/s` (`+16.9%`)** raw `tg64` decode and **`41.11 tok/s` (`+8.8%`)** `pp128` prefill.
+   - **`NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64` (`13.30 GiB`, types `44`/`45`)**: Scores **`100.0 / 100.0`** on [`benchmarks/eval_quality_and_tools.py`](benchmarks/eval_quality_and_tools.py) (`6.7614` blind `wiki-alt` PPL, `7.4400` `WikiText-2` PPL vs `6.9582` `BF16`, `-5.67 GiB` RAM vs `Q4_0`).
+   - **`NVIDIA-Nemotron-3.5-30B-A3B-MaxQ-16GB` (`13.39 GiB`, 100% standard `ggml`)**: Donor-free universal alternative (`max_type = 42`, `0` custom types) verified at `VmHWM = 14.304 GiB <= 15.0 GiB` Cgroup v2 (`188.3 tok/s` `pp512`, `27.80 tok/s` refactor).
+
+---
+
+### 3.14. Optimization 14: `Qwen3.8-Flash-Next` (`MaxQ-64GB` & `MaxQ-32GB`), `PCA-Wiener + RaBitQ Q1_0` PLE, 8-`zmm` `GATED_DELTA_NET`, & Zero-Copy 3D MoE `--repack`
+
+1. **`PCA-Wiener D=256 + RaBitQ Q1_0 (41)` Per-Layer Embedding Compression (`26.82 GiB -> 10.73 GiB`)**:
+   - `Qwen3.8-Flash-Next` (`176.5B` total / `5B` active, `36` Gated DeltaNet + `12` QSA layers, `512` routed experts, `248K` vocab, `blk.48` NextN MTP) includes a `320,001,536`-row Per-Layer Embedding (`PLE`) table consuming `26.82 GiB` in standard `IQ4_NL`. Compressing PLE to `10.73 GiB` (`Q1_0 = 41`) reinvests `+16.09 GiB` into `512/512` unpruned experts, `FP64 Woodbury DualGram Q2_0 (42)`, and `blk.48` MTP (`3.4325` blind `wiki-alt` PPL vs `5.0916` competitor, `-46.6%` KLD).
+   - `MaxQ-32GB` (`24.98 GiB` Shard 1 + `10.73 GiB` lazy NVMe `mmap` Shard 2) applies `42`-layer `K=640->512` ConeCollapse with `F32` `ffn_down_exps.bias`, passing strict `28.5 GiB` Cgroup v2 (`MemorySwapMax = 0`, `VmHWM = 26.91 GiB`).
+2. **512-Bit `Q1_0`/`Q2_0`/`MXFP4` SIMD Kernels, 8-`zmm` `GATED_DELTA_NET`, & Zero-Copy 3D MoE `--repack`**:
+   - Fused 8-`zmm` FMA multi-threaded `GATED_DELTA_NET` removes inner barriers across all 36 linear-attention layers, while `ggml_cpu_get_q8_wdata` fixes upstream `q8_cache` / `params->wdata` aliasing and skips heap repacking on 3D MoE tensors (`ne[2] >= 64`), reducing `MaxQ-64GB` `RssAnon` `5.4×` (`9.81 GiB -> 1.81 GiB`, `KLD = 0.00000` vs `--no-repack`) and aligning `MADV_HUGEPAGE` inward to `2 MiB` boundaries so lazy PLE pages are never pre-faulted.
+
+---
+
+### 3.15. Optimization 15: `RouteCrack 2.0` (`--spec-type routecrack2`) & the `832 B` `L1 Micro-Arbiter` (`common/rc_arbiter_l1.h`)
+
+Unifies **NextN MTP / `RCPredictor`**, **O(1) Two-Zone 40K Suffix Indexing** (`16K Hot + 24K Prefix` with sub-250 ns fast-path bypass skipping the `~15 ms` 248K MTP `lm_head`), and **`192 KB` Stockfish-PVS Zobrist TT + 28-bit Tagged Mode Refutation** (`JSON` / `Code` / `Prose`) under a cache-line-aligned `832 B` (`13` cache lines) `[10 -> 16 -> 1]` ClippedReLU SIMD Micro-Arbiter (`AVX-512` / `AVX2+FMA` / `ARM64 NEON` / scalar; 3 auto-selected hardware profiles: `kRC2DefaultArbiter`, `kRC2DraftlessArbiter`, `kRC2HeavyMoEDraftlessArbiter`). On 16 Zen 5 cores (`0 GPU`), `RouteCrack 2.0` achieves **`15.88 avg / 21.98 peak tok/s`** on `Qwen3.8` (`+80.8%` vs `N=1`, `+14.5%` vs `v3.0 draft-mtp`), **`7.79 avg / 12.31 peak tok/s`** on `DeepSeek-V4 284B MaxQ-v4` (`+14.5%` vs `N=1`), and **`28.20 avg / 42.18 peak tok/s`** on `Nemotron-30B` (`+24.8%` vs `N=1`). See [`speculative/ROUTECRACK_TECHNIQUES.md`](speculative/ROUTECRACK_TECHNIQUES.md) and [`paper/llama-modchip-paper.pdf`](paper/llama-modchip-paper.pdf).
 
 ---
 

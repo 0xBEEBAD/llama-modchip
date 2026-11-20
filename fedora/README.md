@@ -116,9 +116,9 @@ The script was not run on the GEEKOM. These tests were done:
 
 | Test | Where | Result |
 | :--- | :--- | :--- |
-| All generated `llama-server` commands (CPU, Vulkan, MTP, LAN, 256K) | Mac, same llama.cpp b10809 | All flags accepted |
+| All generated `llama-server` commands (CPU, Vulkan, `routecrack2`, MTP, LAN, 256K) | `llama-modchip v3.1.0` (`llama.cpp b12416` / `de32b268c`) | All flags accepted |
 | `build`: packages by capability (`dnf`), treeless clone, CMake with Vulkan, web UI download | Fedora 44 container (aarch64) | Passed |
-| Web chat of the Fedora build | Fedora 44 container | `index.html` served, `build_info` `b10809-5266f24d` |
+| Web chat of the Fedora build | Fedora 44 container | `index.html` served, `build_info` `b12416-de32b268c` |
 | `download`: resume of a partial file, SHA-256 check, no second download, damaged file | Fedora 44 container, real Hugging Face URL | Passed |
 | `info`, `DRY_RUN`, wrong values | Fedora 44 container and Mac | Passed |
 

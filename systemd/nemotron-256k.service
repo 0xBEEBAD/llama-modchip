@@ -35,7 +35,7 @@ CPUAffinity=0-15
 # Mode A (Active Default): Full 256K Exact Global GQA Attention (Unpruned Top-6, NTA Streaming + 2048-token L3 Hot Window)
 Environment="LLAMA_KV_L3_WINDOW=2048" "LLAMA_ATTN_WINDOW=0" "LLAMA_ATTN_SINKS=16" "LLAMA_SWA_STRIDE=1" "LLAMA_KV_DISABLE_CHUNKING=1" "LLAMA_RC_ENABLED=1" "LLAMA_RC_CERT_D0=84" "LLAMA_RC_CERT_D1=92" "LLAMA_RC_CERT_D2=96" "RC_TABLES_DIR=/var/lib/llama-modchip/routecrack" "OMP_PROC_BIND=close" "OMP_PLACES=cores"
 
-# Mode B (Optional): Ultra-Low-Latency SWA-4096 + 16 Sinks (100% L3-Resident 6.3 MB GQA + 46 Mamba-2 Global SSM Layers)
+# Mode B (Optional): Ultra-Low-Latency SWA-4096 + 16 Sinks (100% L3-Resident 6.3 MB GQA + 23 Mamba-2 Global SSM Layers)
 # Environment="LLAMA_KV_L3_WINDOW=2048" "LLAMA_ATTN_WINDOW=4096" "LLAMA_ATTN_SINKS=16" "LLAMA_SWA_STRIDE=1" "LLAMA_KV_DISABLE_CHUNKING=1" "LLAMA_RC_ENABLED=1" "LLAMA_RC_CERT_D0=84" "LLAMA_RC_CERT_D1=92" "LLAMA_RC_CERT_D2=96" "RC_TABLES_DIR=/var/lib/llama-modchip/routecrack" "OMP_PROC_BIND=close" "OMP_PLACES=cores"
 
 # Note on --spec-type routecrack2:
@@ -43,6 +43,19 @@ Environment="LLAMA_KV_L3_WINDOW=2048" "LLAMA_ATTN_WINDOW=0" "LLAMA_ATTN_SINKS=16
 # O(1) Indexed Two-Zone 40K Suffix Copy, Stockfish-PVS Zobrist TT + 28-bit mode refutation, and the
 # RouteCrack 2.0 L1 Micro-Arbiter (< 200 ns/step, zero neural draft model overhead).
 # (--spec-type ngram-map-k and --spec-type ngram-simple remain supported for backward compatibility.)
+#
+# Threading: use non-convoy physical_cores - 1 (e.g., -t 15 -tb 15 on 16-core Zen 5) with --poll 0 --poll-batch 0
+# so OS / HTTP threads never preempt OpenMP barrier workers.
+#
+# Drop-in examples for other v3.1.0 model families (override ExecStart + Environment via `systemctl edit`):
+# - Qwen3.8-Flash-Next MaxQ-64GB / 32GB (set RC_TABLES_DIR=/nonexistent):
+#     --model /var/lib/llama-modchip/models/Qwen3.8-Flash-Next-MaxQ-64GB-00001-of-00002.gguf \
+#     -c 32768 -t 15 -tb 15 --poll 0 --poll-batch 0 --load-mode mmap --flash-attn on \
+#     --cache-type-k q8_0 --cache-type-v q8_0 --repack --jinja --ctx-checkpoints 1 --spec-type routecrack2
+# - DeepSeek-V4-Flash 284B MaxQ-v4 (set RC_TABLES_DIR=/nonexistent):
+#     --model /var/lib/llama-modchip/models/DeepSeek-V4-Flash-0731-MaxQ-v4-00001-of-00003.gguf \
+#     -c 32768 -t 15 -tb 15 --poll 0 --poll-batch 0 --load-mode none --flash-attn on \
+#     --cache-type-k q8_0 --cache-type-v q8_0 --repack --jinja --ctx-checkpoints 64 --spec-type routecrack2
 ExecStart=/usr/local/bin/llama-server \
   --model /var/lib/llama-modchip/models/NVIDIA-Nemotron-3.5-30B-A3B-VQ3-64.gguf \
   --port 8789 \
@@ -53,8 +66,10 @@ ExecStart=/usr/local/bin/llama-server \
   -np 1 \
   -b 2048 \
   -ub 2048 \
-  -t 16 \
-  -tb 16 \
+  -t 15 \
+  -tb 15 \
+  --poll 0 \
+  --poll-batch 0 \
   --cache-type-k q8_0 \
   --cache-type-v q4_0 \
   --repack \

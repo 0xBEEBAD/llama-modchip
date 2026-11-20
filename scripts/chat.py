@@ -154,15 +154,17 @@ def detect_active_model(base_url: str) -> Tuple[str, str, str]:
         elif "vq3" in low:
             display = f"{base_clean} (284B MoE / 13.2B Active · LUT-VQ3-64 3.00-bpw + Fractal-64)"
         elif "fractal" in low:
-            display = f"{base_clean} (284B MoE / 13.2B Active · SwiGLU-H2 + Fractal-64 Q2_0)"
+            display = f"{base_clean} (284B MoE / 13.2B Active · SwiGLU-H2 + Fractal-64 type 44)"
         else:
             display = f"{base_clean} (DeepSeek-V4-Flash Hybrid MLA + MoE)"
         return raw_id, display, "DeepSeek-V4-Flash"
     if "nemotron" in low:
-        if "vq3" in low:
-            display = f"{base_clean} (30B MoE / 3B Active · LUT-VQ3-64 3.00-bpw AVX-512 VBMI)"
+        if "maxq-16gb" in low or "maxq_16gb" in low or "maxq" in low:
+            display = f"{base_clean} (30B MoE / 3B Active · MaxQ-16GB 13.39 GiB Donor-Free)"
+        elif "vq3" in low:
+            display = f"{base_clean} (30B MoE / 3B Active · LUT-VQ3-64 type 45 3.00-bpw)"
         elif "fractal" in low:
-            display = f"{base_clean} (30B MoE / 3B Active · Fractal-64 Q2_0)"
+            display = f"{base_clean} (30B MoE / 3B Active · Fractal-64 type 44)"
         else:
             display = f"{base_clean} (30B Mamba-2 + MoE Hybrid)"
         return raw_id, display, "Nemotron-30B"
@@ -339,9 +341,9 @@ def _is_local_url(base_url: str) -> bool:
     except ValueError:
         pass
     # Also recognize a local LAN/Tailscale GATEWAY_HOST started on this machine
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    gh_file = os.path.join(repo_root, "workspace", "run", "gateway_host")
-    gw_pid_file = os.path.join(repo_root, "workspace", "run", "gateway.pid")
+    ws_dir = _resolve_workspace_dir()
+    gh_file = os.path.join(ws_dir, "run", "gateway_host")
+    gw_pid_file = os.path.join(ws_dir, "run", "gateway.pid")
     try:
         if os.path.isfile(gh_file) and os.path.isfile(gw_pid_file):
             with open(gh_file, "r", encoding="utf-8") as f:
@@ -357,19 +359,35 @@ def _is_local_url(base_url: str) -> bool:
     return False
 
 
-def get_server_affinity_summary(base_url: str) -> str:
-    """Return active local llama-server CPU affinity across all threads + -t/-tb & LP-E status on Linux."""
+def _resolve_workspace_dir() -> str:
+    env_ws = os.environ.get("WORKSPACE_DIR", "").strip()
+    if env_ws:
+        return env_ws
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    marker = os.path.join(repo_root, ".modchip_workspace")
+    if os.path.isfile(marker):
+        try:
+            with open(marker, "r", encoding="utf-8") as mf:
+                line = mf.readline().strip()
+                if line:
+                    return line
+        except OSError:
+            pass
+    return os.path.join(repo_root, "workspace")
+
+
+def _find_local_llama_server_pid(base_url: str) -> Tuple[str, List[str], Dict[str, str]]:
+    """Resolve the exact local llama-server PID (and argv/env) matching base_url's port (following sse_gateway.py if needed)."""
     if platform.system() != "Linux" or not _is_local_url(base_url):
-        return ""
-    import glob
+        return "", [], {}
     from urllib.parse import urlparse
 
     want_port = urlparse(base_url).port
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ws_dir = _resolve_workspace_dir()
 
     # If base_url points at a local sse_gateway.py instance, resolve its LLAMA_BACKEND_URL
     gw_candidates: List[str] = []
-    gw_pid_file = os.path.join(repo_root, "workspace", "run", "gateway.pid")
+    gw_pid_file = os.path.join(ws_dir, "run", "gateway.pid")
     try:
         if os.path.isfile(gw_pid_file):
             with open(gw_pid_file, "r", encoding="utf-8") as f:
@@ -398,9 +416,52 @@ def get_server_affinity_summary(base_url: str) -> str:
         if want_port and gw_port_s.isdigit() and int(gw_port_s) == want_port:
             backend_url = gw_env.get("LLAMA_BACKEND_URL", "http://127.0.0.1:8789")
             if not _is_local_url(backend_url):
-                return ""
+                return "", [], {}
             want_port = urlparse(backend_url).port or 8789
             break
+
+    pid_file = os.path.join(ws_dir, "run", "server.pid")
+    pids: List[str] = []
+    try:
+        if os.path.isfile(pid_file):
+            with open(pid_file, "r", encoding="utf-8") as f:
+                p = f.read().strip()
+                if p.isdigit():
+                    pids.append(p)
+    except OSError:
+        pass
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", "llama-server"], text=True, stderr=subprocess.DEVNULL
+        )
+        for line in out.splitlines():
+            p = line.strip()
+            if p.isdigit() and p not in pids:
+                pids.append(p)
+    except Exception:
+        pass
+
+    for pid in pids:
+        argv = _read_proc_argv(pid)
+        if not argv or not os.path.basename(argv[0]).startswith("llama-server"):
+            continue
+        env_map = _read_proc_environ(pid)
+        srv_port = _arg_value(argv, "--port") or env_map.get("LLAMA_ARG_PORT", "") or "8080"
+        if want_port and srv_port.isdigit() and int(srv_port) != want_port:
+            continue
+        return pid, argv, env_map
+    return "", [], {}
+
+
+def get_server_affinity_summary(base_url: str) -> str:
+    """Return active local llama-server CPU affinity across all threads + -t/-tb & LP-E status on Linux."""
+    if platform.system() != "Linux" or not _is_local_url(base_url):
+        return ""
+    import glob
+
+    matched_pid, matched_argv, matched_env = _find_local_llama_server_pid(base_url)
+    if not matched_pid:
+        return ""
 
     parse_fn = _parse_cpu_list_fallback
     format_fn = _format_cpu_list_fallback
@@ -423,46 +484,6 @@ def get_server_affinity_summary(base_url: str) -> str:
         )
     except Exception:
         pass
-
-    pid_file = os.path.join(repo_root, "workspace", "run", "server.pid")
-    pids: List[str] = []
-    try:
-        if os.path.isfile(pid_file):
-            with open(pid_file, "r", encoding="utf-8") as f:
-                p = f.read().strip()
-                if p.isdigit():
-                    pids.append(p)
-    except OSError:
-        pass
-    try:
-        out = subprocess.check_output(
-            ["pgrep", "-f", "llama-server"], text=True, stderr=subprocess.DEVNULL
-        )
-        for line in out.splitlines():
-            p = line.strip()
-            if p.isdigit() and p not in pids:
-                pids.append(p)
-    except Exception:
-        pass
-
-    matched_pid = ""
-    matched_argv: List[str] = []
-    matched_env: Dict[str, str] = {}
-    for pid in pids:
-        argv = _read_proc_argv(pid)
-        if not argv or not os.path.basename(argv[0]).startswith("llama-server"):
-            continue
-        env_map = _read_proc_environ(pid)
-        srv_port = _arg_value(argv, "--port") or env_map.get("LLAMA_ARG_PORT", "") or "8080"
-        if want_port and srv_port.isdigit() and int(srv_port) != want_port:
-            continue
-        matched_pid = pid
-        matched_argv = argv
-        matched_env = env_map
-        break
-
-    if not matched_pid:
-        return ""
 
     t_dec = _arg_value(matched_argv, "-t", "--threads") or matched_env.get("LLAMA_ARG_THREADS", "")
     t_batch = _arg_value(matched_argv, "-tb", "--threads-batch") or matched_env.get("LLAMA_ARG_THREADS_BATCH", "")
@@ -778,19 +799,15 @@ def run_benchmark_suite(base_url: str) -> None:
     rss_line = ""
     if platform.system() == "Linux" and _is_local_url(base_url):
         try:
-            out_pids = subprocess.check_output(
-                ["pgrep", "-f", "llama-server"], text=True, stderr=subprocess.DEVNULL
-            ).splitlines()
-            best_rss = 0.0
-            for p in out_pids:
-                p = p.strip()
-                if p.isdigit() and os.path.isfile(f"/proc/{p}/status"):
-                    with open(f"/proc/{p}/status", "r", encoding="utf-8") as sf:
-                        for sline in sf:
-                            if sline.startswith("VmRSS:"):
-                                best_rss = max(best_rss, int(sline.split()[1]) / (1024.0 * 1024.0))
-            if best_rss > 0.5:
-                rss_line = f"{best_rss:.2f} GiB"
+            srv_pid, _, _ = _find_local_llama_server_pid(base_url)
+            if srv_pid and os.path.isfile(f"/proc/{srv_pid}/status"):
+                with open(f"/proc/{srv_pid}/status", "r", encoding="utf-8") as sf:
+                    for sline in sf:
+                        if sline.startswith("VmRSS:"):
+                            rss_gib = int(sline.split()[1]) / (1024.0 * 1024.0)
+                            if rss_gib > 0.5:
+                                rss_line = f"{rss_gib:.2f} GiB"
+                            break
         except Exception:
             pass
 

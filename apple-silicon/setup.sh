@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LLAMA_DIR="${LLAMA_DIR:-${REPO_ROOT}/llama.cpp}"
+LLAMA_DIR="${LLAMA_DIR:-${REPO_ROOT}/workspace/llama.cpp}"
 
 echo "[*] Building llama-modchip on Apple Silicon (Metal=${GGML_METAL:-ON}, BLAS=${GGML_BLAS:-ON}, ARM64 NEON SDOT + 1x{8,4,3,2} Fractal-64 tiling)..."
 "${REPO_ROOT}/scripts/build_zen5_llama.sh" "$LLAMA_DIR"

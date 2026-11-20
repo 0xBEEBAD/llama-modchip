@@ -91,7 +91,7 @@ if [[ -z "$QUANTIZE_BIN" ]]; then
     done
 fi
 [[ -z "$QUANTIZE_BIN" || ! -x "$QUANTIZE_BIN" ]] && {
-    echo "ERROR: llama-quantize not found. Run './modchip download-bin' or pass --quantize-bin." >&2
+    echo "ERROR: llama-quantize not found. Run './modchip download-bin --all-tools' or pass --quantize-bin." >&2
     exit 1
 }
 

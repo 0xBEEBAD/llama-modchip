@@ -54,7 +54,7 @@ if [[ -z "${LLAMA_SERVER:-}" ]]; then
         LLAMA_SERVER="${REPO_ROOT}/llama.cpp/build/bin/llama-server"
     else
         LLAMA_SERVER="llama-server"
-        echo "[run-server] WARNING: using 'llama-server' from PATH; Fractal-64 (Q2_0) / VQ3_0 GGUFs require './modchip setup' (or bash apple-silicon/setup.sh)." >&2
+        echo "[run-server] WARNING: using 'llama-server' from PATH; FRACTAL_64 (44) / VQ3_64 (45) GGUFs and RouteCrack 2.0 require './modchip setup' (or bash apple-silicon/setup.sh)." >&2
     fi
 fi
 echo "[run-server] binary=$LLAMA_SERVER" >&2
@@ -64,13 +64,25 @@ if [[ ! -f "$MODEL" ]]; then
     exit 1
 fi
 
-if [[ "$(basename "$MODEL")" != *[Nn]emotron* ]]; then
+MODEL_BASE="$(basename "$MODEL")"
+MODEL_BASE_LOWER="$(echo "$MODEL_BASE" | tr '[:upper:]' '[:lower:]')"
+if [[ "$MODEL_BASE_LOWER" != *nemotron* ]]; then
     export RC_TABLES_DIR="/nonexistent"
+fi
+
+if [[ -z "${MODEL_ALIAS:-}" ]]; then
+    if [[ "$MODEL_BASE_LOWER" == *qwen3.8* || "$MODEL_BASE_LOWER" == *qwen38* ]]; then
+        MODEL_ALIAS="qwen3.8-flash-next"
+    elif [[ "$MODEL_BASE_LOWER" == *deepseek* || "$MODEL_BASE_LOWER" == *dsv4* ]]; then
+        MODEL_ALIAS="deepseek-v4-flash"
+    else
+        MODEL_ALIAS="nemotron-3.5-30b-a3b"
+    fi
 fi
 
 args=(
     --model "$MODEL"
-    --alias nemotron-3.5-30b-a3b
+    --alias "$MODEL_ALIAS"
     --host 127.0.0.1
     --port "$PORT"
     # The default is '*' with credentials. Then any web page in the browser can call the API and read the replies.

@@ -5,7 +5,7 @@ Given a model (via Ollama or HuggingFace), generates training corpus,
 builds hash cascade, and saves binary files ready for the C++ predictor.
 
 Usage:
-    from routecrack.corpus_builder import build_corpus
+    from speculative.corpus_builder import build_corpus
     build_corpus("Qwen/Qwen2.5-7B-Instruct", output_dir="/workspace")
 """
 import struct

@@ -62,7 +62,7 @@ physical_cores() {
     if command -v lscpu > /dev/null; then
         n=$(lscpu -p=CORE,SOCKET | grep -v '^#' | sort -u | wc -l)
     fi
-    if [[ "$n" -gt 0 ]]; then echo $((n)); else getconf _NPROCESSORS_ONLN; fi
+    if [[ "$n" -gt 1 ]]; then echo $((n - 1)); elif [[ "$n" -eq 1 ]]; then echo 1; else getconf _NPROCESSORS_ONLN; fi
 }
 THREADS="${THREADS:-$(physical_cores)}"
 
@@ -92,7 +92,7 @@ build_llama() {
     if [[ ! -d "$LLAMA_DIR/.git" ]]; then
         mkdir -p "$NEMOTRON_HOME"
         # Treeless clone (approximately 55 MB): the full commit history without old file contents.
-        # The build number (10809) comes from the commit count. A shallow clone reports "build 1".
+        # The build number (12416) is passed explicitly via -DLLAMA_BUILD_NUMBER=12416 as well.
         git -c advice.detachedHead=false clone --filter=tree:0 --branch "$LLAMA_TAG" \
             https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
     fi
@@ -117,6 +117,7 @@ build_llama() {
     log "building llama.cpp $LLAMA_TAG (CPU native + Vulkan). This takes approximately 5-15 minutes."
     cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
+        -DLLAMA_BUILD_NUMBER=12416 \
         -DGGML_NATIVE=ON \
         -DGGML_VULKAN=ON \
         -DLLAMA_BUILD_TESTS=OFF \
@@ -212,6 +213,8 @@ cmd_run() {
         --ubatch-size "$UBATCH"
         --threads "$THREADS"
         --threads-batch "$THREADS"
+        --poll 0
+        --poll-batch 0
         --jinja
         --reasoning-format deepseek
     )
@@ -224,7 +227,9 @@ cmd_run() {
     case "$SPEC" in
         none) ;;
         routecrack2)
-            if "$BIN_DIR/llama-server" --help 2>&1 | grep -q "routecrack2"; then
+            if [[ "$DRY_RUN" == 1 ]] || [[ ! -x "$BIN_DIR/llama-server" ]]; then
+                args+=(--spec-type routecrack2)
+            elif "$BIN_DIR/llama-server" --help 2>&1 | grep -q "routecrack2"; then
                 args+=(--spec-type routecrack2)
             else
                 log "binary lacks routecrack2; falling back to --spec-type ngram-mod"
@@ -314,8 +319,8 @@ cmd_info() {
 }
 
 cmd_tune() {
-    # Transparent hugepages for the CPU backend (weights in normal memory, see --load-mode none).
-    echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null
+    # Transparent hugepages for the CPU backend (madvise avoids host-wide compaction stalls while llama.cpp uses MADV_HUGEPAGE).
+    echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null
     echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag > /dev/null
     log "transparent hugepages: $(cat /sys/kernel/mm/transparent_hugepage/enabled) (until the next reboot)"
 }
