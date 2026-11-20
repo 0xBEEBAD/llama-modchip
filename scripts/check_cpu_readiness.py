@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 check_cpu_readiness.py — Hardware Compatibility, OS Headroom & Performance Estimator
-for llama-modchip v3.1.0 3-Tier RAM Fleet:
+for llama-modchip v3.1.1 3-Tier RAM Fleet:
   - 64 GB Tier: Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB) & DeepSeek-V4-Flash 284B MaxQ-v4 (57.99 GiB)
   - 32 GB Tier: Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + 10.73 GiB lazy NVMe PLE)
   - 16 GB Tier: NVIDIA-Nemotron-3.5-30B-A3B VQ3-64 (13.30 GiB) & MaxQ-16GB (13.39 GiB std ggml)
@@ -1000,16 +1000,16 @@ def evaluate_qwen38_readiness(cpu, mem, rep_30b):
         )
     elif ram_total >= 29.0 and ram_avail >= 26.0:
         rec_preset = "qwen38-32gb"
-        status = "READY — 32 GB TIER (Qwen3.8-Flash-Next-MaxQ-32GB · 26.91 GiB <= 28.5 GiB Cgroup)"
+        status = "READY — 32 GB TIER (Qwen3.8-Flash-Next-MaxQ-32GB · 27.44 GiB peak <= 28.5 GiB Cgroup)"
         note = (
             f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available fits 24.98 GiB Shard 1 in RAM + "
-            "10.73 GiB lazy NVMe mmap PLE (~26.9 GiB VmHWM, -ub 512 --ctx-checkpoints 0)."
+            "10.73 GiB lazy NVMe mmap PLE (27.44 GiB peak VmHWM, -ub 512 --ctx-checkpoints 0)."
         )
     else:
-        rec_preset = "nemotron-vq3" if has_avx512_full else "nemotron-maxq-16gb"
-        status = "BELOW 32 GB TIER — USE 16 GB NEMOTRON TIER (VQ3-64 / MaxQ-16GB)"
+        rec_preset = "nemotron-vq3" if (has_avx512_full and ram_total >= 21.0) else "nemotron-maxq-16gb"
+        status = "BELOW 32 GB TIER — USE 16 GB NEMOTRON TIER (MaxQ-16GB / VQ3-64)"
         note = (
-            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available is below the 26.9 GiB VmHWM floor for Qwen3.8-MaxQ-32GB; "
+            f"{ram_total:.1f} GiB total / {ram_avail:.1f} GiB available is below the 27.44 GiB peak VmHWM floor for Qwen3.8-MaxQ-32GB; "
             f"use --preset {rec_preset} instead."
         )
 
@@ -1060,11 +1060,11 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
     core_mlp_dec = min(1.0, 0.68 + 0.02 * max(cpu["physical_cores"], 1))
 
     if is_mac_arm:
-        # Calibrated against verified M5 Max 64GB (286.5 GB/s -> 169.4 pp512, 20.7-27.0 tg)
+        # Calibrated against historical M5 Max 64GB legacy Fractal run (286.5 GB/s -> 169.4 pp512, 20.7-27.0 tg; MaxQ-v4 re-measurement pending)
         raw_n1_tps = min(32.0, 6.80 * (eff_bw / 72.0))
         cold_pp_tps = min(220.0, 45.0 * (eff_bw / 75.0))
     else:
-        # Calibrated to 16C Zen 5 v3.1.0 MaxQ-v4 JSON (6.80 N=1, 7.79 avg / 12.31 peak RouteCrack 2.0, 45.0-50.5 pp)
+        # Calibrated to 16C Zen 5 v3.1.1 MaxQ-v4 JSON (6.80 N=1, 7.79 avg / 12.31 peak RouteCrack 2.0, 45.0-50.5 pp)
         raw_n1_tps = max(1.2, min(42.0, 6.80 * bw_ratio * core_mlp_dec * isa_mult_dec))
         cold_pp_tps = max(3.0, min(260.0, 45.0 * core_ratio_pp * min(max(bw_ratio, 0.5), 2.5) * isa_mult_pp))
     spec_burst_lo = round(raw_n1_tps * 1.15, 1)
@@ -1142,7 +1142,7 @@ def evaluate_dsv4_284b_readiness(cpu, mem, rep_30b):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Check CPU readiness & RAM headroom for llama-modchip v3.1.0 (Qwen3.8 64GB/32GB, DeepSeek-V4 284B MaxQ-v4, Nemotron-30B 16GB)"
+        description="Check CPU readiness & RAM headroom for llama-modchip v3.1.1 (Qwen3.8 64GB/32GB, DeepSeek-V4 284B MaxQ-v4, Nemotron-30B 16GB)"
     )
     parser.add_argument(
         "--model",
@@ -1167,7 +1167,7 @@ def main():
 
     if not args.json:
         print("=" * 78)
-        print(" LLAMA-MODCHIP v3.1.0 — CPU, SIMD ISA & 16GB/32GB/64GB RAM READINESS AUDIT")
+        print(" LLAMA-MODCHIP v3.1.1 — CPU, SIMD ISA & 16GB/32GB/64GB RAM READINESS AUDIT")
         print("=" * 78)
         print(" Running multi-core DRAM streaming micro-benchmark (~0.6s)..." if not args.no_bench else "")
 

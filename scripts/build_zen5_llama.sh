@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_zen5_llama.sh — Build Unified llama-modchip v3.1.0 Engine (RouteCrack 2.0)
+# build_zen5_llama.sh — Build Unified llama-modchip v3.1.1 Engine (RouteCrack 2.0)
 # Base commit : ggml-org/llama.cpp de32b268c4ad55d45f3b7b16c029f4e077f4ba74
 # Patch       : patches/llama-modchip-v3.1.patch
 # Architectures: Qwen3.8-Flash-Next (qwen4exp), DeepSeek-V4 (deepseek4), Nemotron-3.5 (nemotron_h_moe), Qwen3.5-MoE

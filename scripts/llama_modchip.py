@@ -201,7 +201,7 @@ class GGUFModelInfo:
         if self.arch == "qwen4exp":
             mtp_tag = "+MTP" if self.has_mtp else ""
             ple_tag = f"+PLE(d={self.ple_dim})" if self.ple_dim > 0 else ""
-            kind = f"Hybrid GDN+QSA ({self.ssm_layers} GDN + {self.attn_layers} QSA{mtp_tag}{ple_tag})"
+            kind = f"Hybrid GDN+GQA ({self.ssm_layers} GDN + {self.attn_layers} GQA{mtp_tag}{ple_tag})"
         elif self.is_hybrid_ssm:
             kind = f"Hybrid SSM+GQA ({self.ssm_layers} SSM + {self.attn_layers} GQA)"
         else:
@@ -327,7 +327,7 @@ def inspect_gguf(path: str) -> GGUFModelInfo:
         kv_bytes_q8q4 = int(round(1.0625 * mla_dim * attn_layers))
     elif arch == "qwen4exp":
         kv_bytes_fp16 = 2 * (key_length + value_length) * total_kv_heads
-        # Qwen3.8 QSA uses symmetric Q8_0/Q8_0 KV cache (~1.0625 B/elem)
+        # Qwen3.8 GQA uses symmetric Q8_0/Q8_0 KV cache (~1.0625 B/elem)
         kv_bytes_q8q4 = int(round(1.0625 * (key_length + value_length) * total_kv_heads))
     else:
         # FP16: 2 bytes * (K_dim + V_dim) * total_kv_heads
@@ -596,7 +596,7 @@ def _build_hacks_list(
         swa_reason = "DeepSeek-V4 MLA uses latent KV + Lightning Indexer; SWA windowing is locked off."
     elif model.is_hybrid_ssm:
         ssm_kind = "GDN" if model.arch == "qwen4exp" else "Mamba-2"
-        attn_kind = "QSA" if model.arch == "qwen4exp" else "GQA"
+        attn_kind = "GQA"
         swa_enabled = attn_window > 0
         if not swa_enabled:
             swa_safety = "SAFE"
@@ -751,7 +751,7 @@ def _build_hacks_list(
                 "Symmetric MLA KV Quantization (-ctk q8_0 -ctv q8_0)"
                 if model.arch == "deepseek4"
                 else (
-                    "Symmetric QSA KV Quantization (-ctk q8_0 -ctv q8_0)"
+                    "Symmetric GQA KV Quantization (-ctk q8_0 -ctv q8_0)"
                     if model.arch == "qwen4exp"
                     else "Asymmetric KV Quantization (-ctk q8_0 -ctv q4_0)"
                 )
@@ -761,7 +761,7 @@ def _build_hacks_list(
                 f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8_0 MLA, -46.9%)"
                 if model.arch == "deepseek4"
                 else (
-                    f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8_0 QSA, -46.9%)"
+                    f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8_0 GQA, -46.9%)"
                     if model.arch == "qwen4exp"
                     else f"BOOT ({model.kv_bytes_per_tok_fp16} B/tok FP16 -> {model.kv_bytes_per_tok_q8q4} B/tok Q8/Q4, -62.5%)"
                 )
@@ -770,7 +770,7 @@ def _build_hacks_list(
                 "Applied at server startup: DeepSeek-V4 MLA requires matching K/V cache types (Q8_0/Q8_0)."
                 if model.arch == "deepseek4"
                 else (
-                    "Applied at server startup: Qwen3.8 QSA full-attention uses symmetric Q8_0/Q8_0 KV cache."
+                    "Applied at server startup: Qwen3.8 GQA full-attention uses symmetric Q8_0/Q8_0 KV cache."
                     if model.arch == "qwen4exp"
                     else "Applied at server startup: Keys in Q8_0, Values in Q4_0."
                 )
@@ -1188,7 +1188,7 @@ def print_profile_report(prof: ModchipProfile) -> None:
     m = prof.model
     hw = prof.hw
     print("┌" + "─" * 98 + "┐")
-    print(f"│ {'llama-modchip v3.1.0 — CPU GGUF Hardware & Topology Profiler':<96} │")
+    print(f"│ {'llama-modchip v3.1.1 — CPU GGUF Hardware & Topology Profiler':<96} │")
     print("├" + "─" * 98 + "┤")
     print(f"│ [HARDWARE] CPU: {hw.cpu_model[:44]:<44} | CCDs: {hw.num_ccds}x{hw.l3_per_ccd_mb:.0f}MB L3 | RAM: {hw.ram_total_gib:.0f} GiB │")
     print(f"│ [ISA/THP]  Flags: {', '.join(hw.isa_flags):<42} | THP: {hw.thp_mode:<10} | Cores: {len(hw.physical_core_cpus):<6} │")
@@ -1358,7 +1358,7 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
     native_top_k = m.expert_used_count if m.is_moe else 0
 
     print("\n" + "=" * 100)
-    print(f" RUNNING 1-COMMAND A/B BENCHMARK: Stock Baseline vs. llama-modchip v3.1.0 ({m.filename})")
+    print(f" RUNNING 1-COMMAND A/B BENCHMARK: Stock Baseline vs. llama-modchip v3.1.1 ({m.filename})")
     print("=" * 100)
 
     # 1. Baseline (Stock FP16 KV, Native Top-K, No SWA, No SHM override)
@@ -1427,7 +1427,7 @@ def run_ab_benchmark(prof: ModchipProfile, bench_bin: Optional[str] = None) -> i
         print("| :--- | :---: | :---: | :--- |")
         print(f"| **Stock Baseline** | `{pp_a:.2f} tok/s` | `{tg_a:.2f} tok/s` | `Top-K={native_top_k or 'Dense'}`, `FP16 KV`, `No SWA` |")
         print(
-            f"| **`llama-modchip v3.1.0`** | **`{pp_b:.2f} tok/s` (`{pp_gain:+.1f}%`)** | "
+            f"| **`llama-modchip v3.1.1`** | **`{pp_b:.2f} tok/s` (`{pp_gain:+.1f}%`)** | "
             f"**`{tg_b:.2f} tok/s` (`{tg_gain:+.1f}%`)** | "
             f"`Top-K={prof.moe_top_k or native_top_k or 'Dense'}`, `SWA_STRIDE={prof.swa_stride}`, `L3_WIN={prof.l3_window}`, `Q8_0/{ctv.upper()}` |"
         )
@@ -1464,7 +1464,7 @@ def run_tui(prof: ModchipProfile, port: int = 8789) -> None:
             h, w = stdscr.getmaxyx()
             m = prof.model
             hw = prof.hw
-            stdscr.addstr(0, 0, f"=== llama-modchip v3.1.0 (Live SHM TUI) == Target: {m.filename} ==="[:w - 1], curses.A_BOLD)
+            stdscr.addstr(0, 0, f"=== llama-modchip v3.1.1 (Live SHM TUI) == Target: {m.filename} ==="[:w - 1], curses.A_BOLD)
             stdscr.addstr(1, 0, f"CPU: {hw.cpu_model} ({hw.num_ccds}x{hw.l3_per_ccd_mb:.0f}MB L3) | Arch: {m.arch_summary}"[:w - 1])
             stdscr.addstr(2, 0, "-" * min(w - 1, 96))
 

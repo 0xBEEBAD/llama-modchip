@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-dsv4-engine.sh — Build unified llama-modchip v3.1.0 engine on Apple Silicon (Metal + ARM64 NEON SDOT + RouteCrack 2.0).
+# build-dsv4-engine.sh — Build unified llama-modchip v3.1.1 engine on Apple Silicon (Metal + ARM64 NEON SDOT + RouteCrack 2.0).
 # Supports Qwen3.8-Flash-Next, DeepSeek-V4-Flash, and Nemotron-3.5-30B with a single source tree.
 #
 # Environment:

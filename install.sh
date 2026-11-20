@@ -297,15 +297,15 @@ fi
 # Hardware-aware safety-aligned default preset across the 3 RAM Tiers (16 GB / 32 GB / 64 GB):
 #   >= 60 GB RAM (64 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-64GB (53.99 GiB, RouteCrack 2.0, 15.34–21.38 t/s)
 #   30..59 GB RAM (32 GB Tier) -> Qwen3.8-Flash-Next-MaxQ-32GB (24.98 GiB Shard 1 + lazy NVMe PLE, RouteCrack 2.0)
-#   <  30 GB RAM (16 GB Tier) -> Nemotron-3.5-30B-A3B-VQ3-64 (AVX-512 VBMI CPU-Turbo + RouteCrack 2.0)
-#                                or Nemotron-3.5-30B-A3B-MaxQ-16GB (standard ggml CPU/Metal/CUDA)
+#   21..29 GB RAM (16–24 GB)   -> Nemotron-3.5-30B-A3B-VQ3-64 (AVX-512 VBMI CPU-Turbo) or MaxQ-16GB
+#   <= 20 GB RAM (16 GB strict)-> Nemotron-3.5-30B-A3B-MaxQ-16GB (14.304 GiB <= 15.0 GiB cgroup; zero OOM risk)
 if [[ "$TOTAL_RAM_GB" -ge 60 ]]; then
     DEFAULT_PRESET="qwen38-64gb"
     DEFAULT_MENU_CHOICE="1"
 elif [[ "$TOTAL_RAM_GB" -ge 30 ]]; then
     DEFAULT_PRESET="qwen38-32gb"
     DEFAULT_MENU_CHOICE="4"
-elif [[ "$HAS_AVX512_VBMI" == "1" && "$IS_AMD_ZEN12" == "0" ]]; then
+elif [[ "$TOTAL_RAM_GB" -ge 21 && "$HAS_AVX512_VBMI" == "1" && "$IS_AMD_ZEN12" == "0" ]]; then
     DEFAULT_PRESET="nemotron-vq3"
     DEFAULT_MENU_CHOICE="6"
 else
@@ -329,7 +329,7 @@ if [[ "$MODEL_EXPLICIT" == "0" && -z "$MODEL_PRESET" ]]; then
         echo ""
         echo "  [32 GB RAM TIER]"
         echo "  4) Qwen3.8-Flash-Next-MaxQ-32GB                 [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
-        echo "     Default 32GB Flagship (26.9 GiB RSS + lazy NVMe PLE · RouteCrack 2.0)"
+        echo "     Default 32GB Flagship (27.44 GiB peak RSS + lazy NVMe PLE · RouteCrack 2.0)"
         echo "  5) Qwen3.8-Flash-Next-MaxQ-32GB-Abliterated     [176.5B (5B Active) · 24.98 GiB + 10.73 GiB PLE]"
         echo "     [OPT-IN UNCENSORED] 32GB v3.0-r2 Heretic-2 (0.0818 KLD + blk.48 MTP · RouteCrack 2.0)"
         echo ""
@@ -566,7 +566,7 @@ fi
 if [[ "$MODEL_PRESET" == "qwen38-64gb"* && "$TOTAL_RAM_GB" -lt 58 ]]; then
     echo "[!] WARNING: Qwen3.8-MaxQ-64GB requires ~45.1 GiB VmRSS (64 GB+ host RAM recommended; use --preset qwen38-32gb on 32 GB hosts)."
 elif [[ "$MODEL_PRESET" == "qwen38-32gb"* && "$TOTAL_RAM_GB" -lt 28 ]]; then
-    echo "[!] WARNING: Qwen3.8-MaxQ-32GB requires ~26.9 GiB VmRSS + NVMe mmap PLE (32 GB+ host RAM recommended; use --preset nemotron-vq3 on 16 GB hosts)."
+    echo "[!] WARNING: Qwen3.8-MaxQ-32GB requires ~27.44 GiB peak VmHWM + NVMe mmap PLE (32 GB+ host RAM recommended; use --preset nemotron-maxq-16gb on 16 GB hosts)."
 elif [[ "$MODEL_FAMILY" == "dsv4" && "$TOTAL_RAM_GB" -lt 60 ]]; then
     echo "[!] WARNING: DeepSeek-V4 284B requires ~58.3–59.1 GiB anonymous-heap VmRSS (64 GB+ host RAM required)."
 fi
