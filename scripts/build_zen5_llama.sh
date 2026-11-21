@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# build_zen5_llama.sh — Build Unified llama-modchip v3.1.1 Engine (RouteCrack 2.0)
-# Base commit : ggml-org/llama.cpp de32b268c4ad55d45f3b7b16c029f4e077f4ba74
-# Patch       : patches/llama-modchip-v3.1.patch
-# Architectures: Qwen3.8-Flash-Next (qwen4exp), DeepSeek-V4 (deepseek4), Nemotron-3.5 (nemotron_h_moe), Qwen3.5-MoE
+# build_zen5_llama.sh — Build Unified llama-modchip v3.2 Engine (RouteCrack 2.0 + Quantized Split-KV + HARP-Cache v2)
+# Base commit : ggml-org/llama.cpp 46eb1742db6d2caec1bfa848c5702b1bdcc815e5
+# Patch       : patches/llama-modchip-v3.2.patch
+# Architectures: Qwen3.8-Flash-Next (qwen4exp), DeepSeek-V4 (deepseek4), Nemotron-3.5 (nemotron_h_moe), Qwen3.5-MoE, Inkling-2-Mini (inkling2)
 # Speculative  : RouteCrack 2.0 (--spec-type routecrack2: MTP / RCPredictor + Two-Zone Suffix + Stockfish-PVS + L1 Micro-Arbiter)
 # Custom Types : GGML_TYPE_FRACTAL_64 = 44 (30 B/64, CPU + Metal GPU), GGML_TYPE_VQ3_64 = 45 (24 B/64, CPU)
 #                (Upstream GGML_TYPE_Q2_0 = 42 and GGML_TYPE_F8_E4M3 = 43 remain 100% untouched)
@@ -10,12 +10,12 @@ set -euo pipefail
 
 LLAMA_DIR="${1:-./llama.cpp}"
 BUILD_DIR="${BUILD_DIR:-${LLAMA_DIR}/build}"
-LLAMA_COMMIT="de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
-LLAMA_BUILD_NUM="12416"
+LLAMA_COMMIT="46eb1742db6d2caec1bfa848c5702b1bdcc815e5"
+LLAMA_BUILD_NUM="12604"
 export HF_UI_VERSION="${HF_UI_VERSION:-b${LLAMA_BUILD_NUM}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PATCH_FILE="${REPO_ROOT}/patches/llama-modchip-v3.1.patch"
+PATCH_FILE="${REPO_ROOT}/patches/llama-modchip-v3.2.patch"
 OS_NAME="$(uname -s)"
 ARCH_NAME="$(uname -m)"
 NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)"
@@ -39,7 +39,8 @@ reset_tree() {
         "$LLAMA_DIR/common/rc_stockfish.h" \
         "$LLAMA_DIR/common/rc_trie_v2.h" \
         "$LLAMA_DIR/common/rc_arbiter_l1.h" \
-        "$LLAMA_DIR/common/rc_routecrack2.h"
+        "$LLAMA_DIR/common/rc_routecrack2.h" \
+        "$LLAMA_DIR/tools/server/rc_harp_radix.h"
     while read -r created_file; do
         [[ -n "$created_file" ]] && rm -f "$LLAMA_DIR/$created_file"
     done < <(git -C "$REPO_ROOT" apply --summary "$PATCH_FILE" 2>/dev/null | awk '/create mode/{print $4}')
@@ -64,18 +65,18 @@ if [[ "${RESET_LLAMA_TREE:-0}" == "1" ]]; then
     reset_tree
 fi
 
-echo "[*] Applying unified llama-modchip v3.1 patch ($(basename "$PATCH_FILE"))..."
+echo "[*] Applying unified llama-modchip v3.2 patch ($(basename "$PATCH_FILE"))..."
 if git -C "$LLAMA_DIR" apply --reverse --check "$PATCH_FILE" 2>/dev/null; then
-    echo "[i] llama-modchip-v3.1.patch already applied cleanly in $LLAMA_DIR."
+    echo "[i] llama-modchip-v3.2.patch already applied cleanly in $LLAMA_DIR."
 elif git -C "$LLAMA_DIR" apply --check "$PATCH_FILE" 2>/dev/null; then
     git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-    echo "[+] llama-modchip-v3.1.patch applied cleanly."
+    echo "[+] llama-modchip-v3.2.patch applied cleanly."
 else
-    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying llama-modchip-v3.1.patch..."
+    echo "[*] Resetting $LLAMA_DIR working tree to clean $LLAMA_COMMIT before applying llama-modchip-v3.2.patch..."
     reset_tree
     if git -C "$LLAMA_DIR" apply --check "$PATCH_FILE"; then
         git -C "$LLAMA_DIR" apply "$PATCH_FILE"
-        echo "[+] llama-modchip-v3.1.patch applied cleanly."
+        echo "[+] llama-modchip-v3.2.patch applied cleanly."
     else
         echo "[!] ERROR: Failed to apply $PATCH_FILE onto $LLAMA_DIR (expected commit $LLAMA_COMMIT)." >&2
         exit 1

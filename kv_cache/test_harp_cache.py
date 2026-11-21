@@ -80,9 +80,11 @@ def test_radix_intermediate_eviction_and_collision():
         p2 = [300 + i for i in range(32)]
         p3 = [400 + i for i in range(32)]
 
-        # Store [p0, p1, p2] -> fills all 3 physical pages
+        # Store [p0, p1, p2] -> fills all 3 physical pages (using causally chained hashes)
         assert engine.store_prefix(p0 + p1 + p2) == 3
-        h0, h1, h2 = hash_token_block(p0), hash_token_block(p1), hash_token_block(p2)
+        h0 = hash_token_block(p0, prev_hash=engine.fingerprint_seed)
+        h1 = hash_token_block(p1, prev_hash=h0)
+        h2 = hash_token_block(p2, prev_hash=h1)
 
         # Touch p0 and p2 so p1 (intermediate node) becomes Least Recently Used
         time.sleep(0.002)
@@ -134,6 +136,39 @@ class TestHARPCache(unittest.TestCase):
     def test_default_shm_path_is_per_uid(self):
         default_path = HARPCacheEngine.default_shm_path()
         self.assertTrue(default_path.endswith(f"_{_UID}.bin"), default_path)
+
+    def test_causal_prefix_divergence_never_collides(self):
+        """Regression test: [A, C] and [B, C] MUST NOT share KV page C (causal/RoPE soundness)."""
+        div_shm = f"/dev/shm/harp_kv_cache_test_div_{_UID}.bin"
+        engine = HARPCacheEngine(shm_path=div_shm, max_pages=16, model_fingerprint="modelA:q8_0:q4_0")
+        try:
+            block_a = [1000 + i for i in range(32)]
+            block_b = [2000 + i for i in range(32)]
+            block_c = [3000 + i for i in range(32)]
+            engine.store_prefix(block_a + block_c)
+
+            # Exact match on [A, C] hits all 64 tokens
+            cached_ac, _, _ = engine.resolve_prefix(block_a + block_c)
+            self.assertEqual(cached_ac, 64)
+
+            # Diverging prefix [B, C] MUST return 0 cached tokens (never reuse C from A!)
+            cached_bc, _, rem_bc = engine.resolve_prefix(block_b + block_c)
+            self.assertEqual(cached_bc, 0)
+            self.assertEqual(len(rem_bc), 64)
+
+            # Storing [B, C] allocates 2 distinct pages (never overwrites [A, C]'s C page)
+            self.assertEqual(engine.store_prefix(block_b + block_c), 2)
+            self.assertEqual(len(engine.hash_to_page), 4)
+
+            # Different model fingerprint must produce distinct chained hashes
+            h_a = hash_token_block(block_a, prev_hash=engine.fingerprint_seed)
+            other_seed = fnv1a_64(b"modelB:q8_0:q4_0")
+            h_a_other = hash_token_block(block_a, prev_hash=other_seed)
+            self.assertNotEqual(h_a, h_a_other)
+        finally:
+            engine.close()
+            if os.path.exists(div_shm):
+                os.remove(div_shm)
 
 
 if __name__ == "__main__":

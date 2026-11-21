@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# build-dsv4-engine.sh — Build unified llama-modchip v3.1.1 engine on Apple Silicon (Metal + ARM64 NEON SDOT + RouteCrack 2.0).
-# Supports Qwen3.8-Flash-Next, DeepSeek-V4-Flash, and Nemotron-3.5-30B with a single source tree.
+# build-dsv4-engine.sh — Build unified llama-modchip v3.2 engine on Apple Silicon (Metal + ARM64 NEON SDOT + RouteCrack 2.0 + Quantized Split-KV + HARP-Cache v2).
+# Supports Qwen3.8-Flash-Next, DeepSeek-V4-Flash, Nemotron-3.5-30B, and Inkling-2-Mini with a single source tree.
 #
 # Environment:
 #   LLAMA_SRC  existing llama.cpp clone (default: workspace/llama.cpp-src, cloned if missing)
@@ -11,7 +11,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-BASE=de32b268c4ad55d45f3b7b16c029f4e077f4ba74
+BASE=46eb1742db6d2caec1bfa848c5702b1bdcc815e5
 LLAMA_SRC="${LLAMA_SRC:-$REPO/workspace/llama.cpp-src}"
 DEST="${DEST:-$REPO/workspace/llama.cpp-v3}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
@@ -30,15 +30,15 @@ fi
 git -C "$LLAMA_SRC" worktree add --detach "$DEST" "$BASE"
 cd "$DEST"
 
-git apply "$REPO/patches/llama-modchip-v3.1.patch"
+git apply "$REPO/patches/llama-modchip-v3.2.patch"
 
 if [[ "${BUILD:-1}" == 0 ]]; then
     echo "[build-modchip-v3] source tree ready in $DEST (BUILD=0)" >&2
     exit 0
 fi
 
-export HF_UI_VERSION="${HF_UI_VERSION:-b12416}"
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_NUMBER=12416 -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
+export HF_UI_VERSION="${HF_UI_VERSION:-b12604}"
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_NUMBER=12604 -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
     -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=ON -DLLAMA_CURL=OFF
 cmake --build build -j "$JOBS" --target llama-server llama-bench llama-cli llama-perplexity llama-quantize test-backend-ops test-quantize-fns test-llama-archs
 

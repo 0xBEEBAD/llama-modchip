@@ -22,9 +22,9 @@ $WindowsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot   = Split-Path -Parent $WindowsDir
 if (-not $SrcRoot) { $SrcRoot = Join-Path $RepoRoot "workspace" }
 
-$BaseCommit = "de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
-$env:HF_UI_VERSION = "b12416"
-$PatchFile  = Join-Path $RepoRoot "patches\llama-modchip-v3.1.patch"
+$BaseCommit = "46eb1742db6d2caec1bfa848c5702b1bdcc815e5"
+$env:HF_UI_VERSION = "b12604"
+$PatchFile  = Join-Path $RepoRoot "patches\llama-modchip-v3.2.patch"
 $LlamaDir   = Join-Path $SrcRoot "llama.cpp-src"
 $OutDir     = if ($Cuda) { Join-Path $WindowsDir "bin-modchip-cuda" } else { Join-Path $WindowsDir "bin-modchip" }
 $BuildDir   = if ($Cuda) { Join-Path $LlamaDir "build-cuda" } else { Join-Path $LlamaDir "build-mingw" }
@@ -58,7 +58,7 @@ try {
     }
     Write-Host "[*] Resetting working tree ..." -ForegroundColor Cyan
     & $git checkout -q -- .
-    foreach ($f in "ggml\src\vq3_codebook.h", "common\rc_predictor.h", "common\rc_stockfish.h", "common\rc_trie_v2.h", "common\rc_arbiter_l1.h", "common\rc_routecrack2.h") {
+    foreach ($f in "ggml\src\vq3_codebook.h", "common\rc_predictor.h", "common\rc_stockfish.h", "common\rc_trie_v2.h", "common\rc_arbiter_l1.h", "common\rc_routecrack2.h", "tools\server\rc_harp_radix.h") {
         Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LlamaDir $f)
     }
 
@@ -99,9 +99,9 @@ try {
         $cmd = @"
 call "$vcvars" >nul 2>&1
 set "PATH=$cudaRoot\bin;%PATH%"
-set "HF_UI_VERSION=b12416"
+set "HF_UI_VERSION=b12604"
 cd /d "$LlamaDir"
-cmake -B "$BuildDir" -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_NUMBER=12416 -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$Arch -DGGML_NATIVE=OFF $isaFlags -DGGML_OPENMP=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF "-DCMAKE_EXE_LINKER_FLAGS=/STACK:16777216"
+cmake -B "$BuildDir" -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_NUMBER=12604 -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$Arch -DGGML_NATIVE=OFF $isaFlags -DGGML_OPENMP=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF "-DCMAKE_EXE_LINKER_FLAGS=/STACK:16777216"
 if errorlevel 1 exit /b 1
 cmake --build "$BuildDir" -j $jobs --target llama-server llama-cli llama-bench llama-perplexity llama-quantize
 "@
@@ -123,7 +123,7 @@ cmake --build "$BuildDir" -j $jobs --target llama-server llama-cli llama-bench l
         Write-Host "[*] Configuring ..." -ForegroundColor Cyan
         & cmake -B $BuildDir -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DLLAMA_BUILD_NUMBER=12416 `
+            -DLLAMA_BUILD_NUMBER=12604 `
             -DGGML_NATIVE=ON `
             -DGGML_OPENMP=OFF `
             -DLLAMA_CURL=OFF `

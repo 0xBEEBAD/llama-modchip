@@ -2,7 +2,7 @@
 # nemotron.sh — Nemotron 3.5 Lightning 30B-A3B with the llama.cpp web chat on Fedora.
 #
 # Target: GEEKOM A8, AMD Ryzen 7 8745HS (8 Zen 4 cores with AVX-512, Radeon 780M iGPU), 64 GB DDR5.
-# Builds llama.cpp @ de32b268c (b12416) + patches/llama-modchip-v3.1.patch (RouteCrack 2.0 + zero-collision
+# Builds llama.cpp @ 46eb174 (b12604) + patches/llama-modchip-v3.2.patch (RouteCrack 2.0 + Quantized Split-KV + HARP-Cache v2 + zero-collision
 # types 44/45) and runs NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0 (or MaxQ-16GB / VQ3-64) with SPEC=routecrack2.
 #
 # Usage:
@@ -29,10 +29,10 @@
 # Extra arguments after "run" go to llama-server unchanged.
 set -euo pipefail
 
-LLAMA_TAG="b12416"
-LLAMA_COMMIT="de32b268c4ad55d45f3b7b16c029f4e077f4ba74"
+LLAMA_TAG="b12604"
+LLAMA_COMMIT="46eb1742db6d2caec1bfa848c5702b1bdcc815e5"
 SCRIPT_DIR_FEDORA="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_V31="${SCRIPT_DIR_FEDORA}/../patches/llama-modchip-v3.1.patch"
+PATCH_V32="${SCRIPT_DIR_FEDORA}/../patches/llama-modchip-v3.2.patch"
 MODEL_REPO="ggml-org/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF"
 MODEL_REV="8cd082170ed313484be1cf44f256a5caa2cfdad3"
 MODEL_FILE="NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf"
@@ -91,10 +91,11 @@ install_packages() {
 build_llama() {
     if [[ ! -d "$LLAMA_DIR/.git" ]]; then
         mkdir -p "$NEMOTRON_HOME"
-        # Treeless clone (approximately 55 MB): the full commit history without old file contents.
-        # The build number (12416) is passed explicitly via -DLLAMA_BUILD_NUMBER=12416 as well.
-        git -c advice.detachedHead=false clone --filter=tree:0 --branch "$LLAMA_TAG" \
-            https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
+        # Shallow fetch of exact pinned commit 46eb174 (build 12604).
+        git init "$LLAMA_DIR"
+        git -C "$LLAMA_DIR" remote add origin https://github.com/ggml-org/llama.cpp.git
+        git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_COMMIT"
+        git -C "$LLAMA_DIR" -c advice.detachedHead=false checkout FETCH_HEAD
     fi
     local head
     head=$(git -C "$LLAMA_DIR" rev-parse HEAD)
@@ -105,10 +106,10 @@ build_llama() {
         log "llama.cpp $LLAMA_TAG is already built"
         return
     fi
-    if [[ -f "$PATCH_V31" ]]; then
-        if git -C "$LLAMA_DIR" apply --check "$PATCH_V31" 2>/dev/null; then
-            log "applying llama-modchip-v3.1.patch (RouteCrack 2.0)"
-            git -C "$LLAMA_DIR" apply "$PATCH_V31"
+    if [[ -f "$PATCH_V32" ]]; then
+        if git -C "$LLAMA_DIR" apply --check "$PATCH_V32" 2>/dev/null; then
+            log "applying llama-modchip-v3.2.patch (RouteCrack 2.0 + Split-KV + HARP-Cache v2)"
+            git -C "$LLAMA_DIR" apply "$PATCH_V32"
         fi
     fi
     # The build downloads the web UI for its build number from Hugging Face. Set the version explicitly,
@@ -117,7 +118,7 @@ build_llama() {
     log "building llama.cpp $LLAMA_TAG (CPU native + Vulkan). This takes approximately 5-15 minutes."
     cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
-        -DLLAMA_BUILD_NUMBER=12416 \
+        -DLLAMA_BUILD_NUMBER=12604 \
         -DGGML_NATIVE=ON \
         -DGGML_VULKAN=ON \
         -DLLAMA_BUILD_TESTS=OFF \

@@ -43,10 +43,15 @@ def fnv1a_64(data: bytes, seed: int = FNV_OFFSET_BASIS) -> int:
     return h
 
 
-def hash_token_block(tokens: List[int]) -> int:
-    """Hashes a contiguous sequence of token IDs using 64-bit FNV-1a."""
+def hash_token_block(tokens: List[int], prev_hash: int = FNV_OFFSET_BASIS) -> int:
+    """
+    Hashes a contiguous sequence of token IDs using causally chained 64-bit FNV-1a:
+      H_k = FNV64(H_{k-1} || token_block_k).
+    When called with `prev_hash`, guarantees diverging prefixes [A, C] and [B, C]
+    produce distinct hashes for block C (preserving causal attention & SSM soundness).
+    """
     raw = struct.pack(f"{len(tokens)}i", *tokens)
-    return fnv1a_64(raw)
+    return fnv1a_64(raw, seed=prev_hash)
 
 
 class HARPPage:
@@ -91,16 +96,22 @@ class HARPCacheEngine:
         euid = getattr(os, "geteuid", getattr(os, "getuid", lambda: 0))()
         return f"/dev/shm/harp_kv_cache_{euid}.bin"
 
-    def __init__(self, shm_path: Optional[str] = None, max_pages: int = MAX_PAGES):
+    def __init__(
+        self,
+        shm_path: Optional[str] = None,
+        max_pages: int = MAX_PAGES,
+        model_fingerprint: str = "default",
+    ):
         self.shm_path = shm_path or self.default_shm_path()
         self.max_pages = max(1, int(max_pages))
         self.total_shm_bytes = self.max_pages * self.PAGE_KV_BYTES
+        self.fingerprint_seed = fnv1a_64(model_fingerprint.encode("utf-8"), seed=FNV_OFFSET_BASIS)
         self.lock = threading.Lock()
 
-        # Content-addressable lookup index: page_hash (uint64) -> HARPPage
+        # Causally chained content-addressable index: chained_prefix_hash (uint64) -> HARPPage
         self.hash_to_page: Dict[int, HARPPage] = {}
 
-        # Prefix Radix Tree: each node is Dict[block_hash, {"page": HARPPage, "children": dict}]
+        # Prefix Radix Tree: each node is Dict[chained_hash, {"page": HARPPage, "children": dict}]
         self.radix_root: Dict[int, Dict[str, Any]] = {}
 
         # Physical page allocator (monotonic watermark + recycled free-list)
@@ -219,9 +230,9 @@ class HARPCacheEngine:
 
     def resolve_prefix(self, token_stream: List[int]) -> Tuple[int, List[HARPPage], List[int]]:
         """
-        Longest Common Prefix (LCP) Resolver.
-        Walks the Radix Tree (with content-addressed block fallback) in 32-token pages
-        and updates LRU `last_accessed` timestamps on every hit.
+        Causally Sound Longest Common Prefix (LCP) Resolver.
+        Walks the Prefix Radix Tree using chained rolling hashes H_k = FNV64(H_{k-1} || B_k)
+        seeded by `model_fingerprint`. Diverging prefixes [A, C] and [B, C] never collide on C.
         Returns:
             (cached_tokens_count, matched_pages, remaining_suffix_tokens)
         """
@@ -232,9 +243,11 @@ class HARPCacheEngine:
 
         with self.lock:
             radix_cursor: Optional[Dict[int, Dict[str, Any]]] = self.radix_root
+            rolling_hash = self.fingerprint_seed
             while curr_offset + self.PAGE_TOKENS <= n_tokens:
                 chunk = token_stream[curr_offset : curr_offset + self.PAGE_TOKENS]
-                h = hash_token_block(chunk)
+                rolling_hash = hash_token_block(chunk, prev_hash=rolling_hash)
+                h = rolling_hash
 
                 page: Optional[HARPPage] = None
                 if radix_cursor is not None and h in radix_cursor:
@@ -245,6 +258,8 @@ class HARPCacheEngine:
                     else:
                         radix_cursor = None
 
+                # O(1) chained-hash fallback is causally sound ONLY because `h` commits to
+                # the entire preceding prefix [B_0 .. B_k] + model fingerprint.
                 if page is None:
                     radix_cursor = None
                     cand = self.hash_to_page.get(h)
@@ -265,8 +280,9 @@ class HARPCacheEngine:
 
     def store_prefix(self, token_stream: List[int], simulated_kv_data: Optional[bytes] = None) -> int:
         """
-        Chunks and stores an immutable prefix into HARP-Cache in shared memory,
-        updating both the content-addressable hash table and the Prefix Radix Tree.
+        Chunks and stores an immutable prefix into HARP-Cache in shared memory using
+        causally chained hashes H_k = FNV64(H_{k-1} || B_k), updating both the
+        chained-hash table and the Prefix Radix Tree.
         Returns number of newly stored 32-token pages.
         """
         new_pages = 0
@@ -276,9 +292,11 @@ class HARPCacheEngine:
 
         with self.lock:
             radix_cursor = self.radix_root
+            rolling_hash = self.fingerprint_seed
             while curr_offset + self.PAGE_TOKENS <= n_tokens:
                 chunk = token_stream[curr_offset : curr_offset + self.PAGE_TOKENS]
-                h = hash_token_block(chunk)
+                rolling_hash = hash_token_block(chunk, prev_hash=rolling_hash)
+                h = rolling_hash
 
                 existing = self.hash_to_page.get(h)
                 if existing is not None and existing.tokens == chunk:
