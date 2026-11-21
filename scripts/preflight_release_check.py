@@ -258,17 +258,23 @@ def check_rc_header_sync(manifest: dict[str, Any], g: GateResult) -> None:
         return
     patch_txt = patch_path.read_text(encoding="utf-8", errors="replace")
     for hdr in manifest.get("rc_synced_headers", []):
-        local_p = REPO_ROOT / "speculative/cpp" / hdr
+        if "/" in hdr:
+            patch_rel = hdr
+            local_name = Path(hdr).name
+        else:
+            patch_rel = f"common/{hdr}"
+            local_name = hdr
+        local_p = REPO_ROOT / "speculative/cpp" / local_name
         if not local_p.exists():
-            g.fail(f"Missing header speculative/cpp/{hdr}")
+            g.fail(f"Missing header speculative/cpp/{local_name}")
             continue
-        embedded = extract_new_file_from_patch(patch_txt, f"common/{hdr}")
+        embedded = extract_new_file_from_patch(patch_txt, patch_rel)
         if embedded is None:
-            g.fail(f"{manifest['patch_file']}: common/{hdr} not found as added file in patch")
+            g.fail(f"{manifest['patch_file']}: {patch_rel} not found as added file in patch")
             continue
         local_txt = local_p.read_text(encoding="utf-8")
         if local_txt != embedded:
-            g.fail(f"Header drift: speculative/cpp/{hdr} != common/{hdr} inside {manifest['patch_file']}")
+            g.fail(f"Header drift: speculative/cpp/{local_name} != {patch_rel} inside {manifest['patch_file']}")
 
 
 # ---------------------------------------------------------------------------
@@ -635,6 +641,21 @@ def check_syntax_and_tests(run_cpp: bool, g: GateResult) -> None:
                     run = run_cmd([str(out_bin)])
                     if run.returncode != 0:
                         g.fail(f"test_routecrack2 ({label}) failed (rc={run.returncode}):\n{run.stdout}\n{run.stderr}")
+                harp_test = REPO_ROOT / "speculative/cpp/test_harp_radix.cpp"
+                if harp_test.exists():
+                    harp_bin = Path(td) / "test_harp_radix"
+                    comp_h = run_cmd([
+                        "g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                        "-fsanitize=address,undefined",
+                        "-I", str(REPO_ROOT / "speculative/cpp"),
+                        str(harp_test), "-o", str(harp_bin),
+                    ])
+                    if comp_h.returncode != 0:
+                        g.fail(f"C++ compile failed (test_harp_radix):\n{comp_h.stderr.strip()}")
+                    else:
+                        run_h = run_cmd([str(harp_bin)])
+                        if run_h.returncode != 0:
+                            g.fail(f"test_harp_radix failed (rc={run_h.returncode}):\n{run_h.stdout}\n{run_h.stderr}")
 
 
 # ---------------------------------------------------------------------------

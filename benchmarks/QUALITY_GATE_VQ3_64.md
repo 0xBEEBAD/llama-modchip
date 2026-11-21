@@ -1,9 +1,9 @@
-# `llama-modchip v3.1.1` 3-Tier Quality, Signal Precision & `RouteCrack 2.0` Parity Gate
+# `llama-modchip v3.2.0` 3-Tier Quality, Signal Precision & `RouteCrack 2.0` Parity Gate
 
-- **Release:** `v3.1.1` (Zero-Collision `ggml` ABI `41..45` · Unified `patches/llama-modchip-v3.1.patch` on `llama.cpp @ de32b268c` / `b12416`)
+- **Release:** `v3.2.0` (Zero-Collision `ggml` ABI `41..45` · Unified `patches/llama-modchip-v3.2.patch` on `llama.cpp @ 46eb1742d` / `b12604`)
 - **Target Flagship Fleet:**
   - **64 GB & 32 GB Tiers — `Qwen3.8-Flash-Next`** (`176.5B` total / `5B` active, `48` blocks: `36` Gated DeltaNet + `12` GQA + `512` routed experts + `320M`-row PLE + `blk.48` NextN MTP)
-  - **64 GB Tier (`284B`) — `DeepSeek-V4-Flash-0731-MaxQ-v4`** (`284.33B` total / `13.17B` active, `43` MLA + `256+1s` MoE layers, unpruned `Top-6`, 100% donor-free standard `ggml` tensor types; requires `llama-modchip v3.1.1+` loader for `ConeCollapse` `ffn_down_exps.bias`)
+  - **64 GB Tier (`284B`) — `DeepSeek-V4-Flash-0731-MaxQ-v4`** (`284.33B` total / `13.17B` active, `43` MLA + `256+1s` MoE layers, unpruned `Top-6`, 100% donor-free standard `ggml` tensor types; requires `llama-modchip v3.2.0+` loader for `ConeCollapse` `ffn_down_exps.bias`)
   - **16 GB Tier — `NVIDIA-Nemotron-3.5-Lightning-30B-A3B`** (`30.2B` total / `3.0B` active, `52` blocks: `23` Mamba-2 SSM + `23` Sparse MoE + `6` GQA Attention, unpruned `Top-6`; `VQ3-64` CPU-Turbo, `Fractal-64` Modchip Pro & `MaxQ-16GB` 100% unmodified-upstream `ggml`)
 - **Reference Testbed:** AMD Ryzen 9 9955HX (`16` Zen 5 cores, `64 MB` dual-CCD L3 cache, `74.0 GiB` Linux container RAM, DDR5-5600, Transparent HugePages `madvise`, `-t 15 -tb 15 --poll 0 --poll-batch 0`, `0 GPU`), with explicit Linux Cgroup v2 `MemorySwapMax=0` capacity enforcement (`60 GiB` for 64 GB tier, `28.5 GiB` for 32 GB tier, `15.0 GiB` for `MaxQ-16GB`).
 - **Evaluation Suites:**
@@ -14,9 +14,9 @@
 
 ---
 
-## 1. Zero-Collision `v3.1.1` `ggml` ABI & Format Signal Fidelity
+## 1. Zero-Collision `v3.2.0` `ggml` ABI & Format Signal Fidelity
 
-`llama-modchip v3.1.1` preserves all upstream `ggml` tensor types (`0..43`) untouched and places custom block-64 CPU/Metal quantization formats at dedicated zero-collision slots `44` and `45`:
+`llama-modchip v3.2.0` preserves all upstream `ggml` tensor types (`0..43`) untouched and places custom block-64 CPU/Metal quantization formats at dedicated zero-collision slots `44` and `45`:
 
 | `ggml` Enum ID | Symbol (`ggml.h`) | Effective `bpw` | Bytes / 64 W | Direct `BF16` SQNR | Cosine Sim vs. `BF16` | Backends |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -105,15 +105,15 @@ Built 100% donor-free from `deepseek-ai/DeepSeek-V4-Flash-0731` (`7872f01b1d1fe2
 
 ---
 
-## 6. Reproducibility Commands (`v3.1.1`)
+## 6. Reproducibility Commands (`v3.2.0`)
 
 ```bash
-# 1. Build unified llama-modchip v3.1.1 engine with quantizer & backend kernel tests
+# 1. Build unified llama-modchip v3.2.0 engine with quantizer & backend kernel tests
 BUILD_TESTS=1 ./scripts/build_zen5_llama.sh ./workspace/llama.cpp
 ./workspace/llama.cpp/build/bin/test-quantize-fns
 ./workspace/llama.cpp/build/bin/test-backend-ops test -b CPU
 
-# 2. Or download all prebuilt v3.1.1 Linux x86_64 binaries (including llama-perplexity & llama-bench)
+# 2. Or download all prebuilt v3.2.0 Linux x86_64 binaries (including llama-perplexity & llama-bench)
 ./modchip download-bin --all-tools
 
 # 3. Download & SHA-256 verify any 3-Tier checkpoint from Hugging Face

@@ -1,6 +1,47 @@
-# Release Notes — `llama-modchip` (`v3.1.1`)
+# Release Notes — `llama-modchip` (`v3.2.0`)
 
 > **Quick Links:** [Overview (`README.md`)](README.md) · [LUT-VQ3-64 & MaxQ-v4 Quality Gate (`benchmarks/QUALITY_GATE_VQ3_64.md`)](benchmarks/QUALITY_GATE_VQ3_64.md) · [Technical Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md) · [Windows Port & Hybrid Pack (`windows/README.md`)](windows/README.md) · [Fractal-MoE Quality Gate (`benchmarks/FRACTAL_MOE_QUALITY_GATE.md`)](benchmarks/FRACTAL_MOE_QUALITY_GATE.md) · [`RouteCrack 2.0` Techniques (`speculative/ROUTECRACK_TECHNIQUES.md`)](speculative/ROUTECRACK_TECHNIQUES.md) · [Engineering FAQ (`FAQ.md`)](FAQ.md)
+
+---
+
+## `v3.2.0` — Upstream `llama.cpp @ 46eb174` (`b12604`) Rebase, Quantized & Heterogeneous Split-KV Decode (`+15.1%`–`+61.4%` at `32K`), & Native C++ Chained-Prefix HARP-Cache v2 (`16.40 ms` `/dev/shm` Post-Restart Restore)
+
+**Release Date:** November 2026  
+**Highlights:**
+1. **Upstream `llama.cpp @ 46eb1742d` (`b12604`) Rebase & Native `Inkling-2` Support ([`patches/llama-modchip-v3.2.patch`](patches/llama-modchip-v3.2.patch))**:
+   - Rebased the unified engine patch cleanly onto `ggml-org/llama.cpp @ 46eb1742db6d2caec1bfa848c5702b1bdcc815e5` (`b12604`, `SHA256 = 43a090791e3d062be28106e65101418f644bb21c13feab681f4a471ce84419ab`; previous `v3.1` patch archived under `patches/archive/llama-modchip-v3.1.patch`).
+   - Picks up native upstream `src/models/inkling2.cpp` (`Inkling-2`) and all `b12416..b12604` runtime improvements while preserving the **zero-collision `ggml` ABI (`41 = Q1_0`, `42 = Q2_0`, `43 = F8_E4M3` untouched; `44 = FRACTAL_64`, `45 = VQ3_64`)** — verified across all 38 tensor types in `test-quantize-fns`.
+   - Pinned `46eb1742d` / `LLAMA_BUILD_NUMBER=12604` / `HF_UI_VERSION=b12604` across all four platform build scripts (`scripts/build_zen5_llama.sh`, `fedora/nemotron.sh`, `apple-silicon/build-dsv4-engine.sh`, `windows/build_patched_engine.ps1`).
+2. **Quantized & Heterogeneous Split-KV Decode (`ggml/src/ggml-cpu/ops.cpp`, `ggml/src/ggml-cpu/ggml-cpu.c`)**:
+   - Unlocks CPU multi-thread Split-KV decode (`use_split_kv_path`) for quantized and heterogeneous KV caches (`Q8_0/Q4_0`, `Q4_0/Q4_0`, etc.) whenever `neq2 < nth || (nek1 >= 2048 && neq2 % nth != 0)` (runtime env override `LLAMA_MODCHIP_SPLIT_KV_QUANT=0|1|2`, default `1`).
+   - Fixes two latent bugs in the CPU FlashAttention decode path: adds `+ CACHE_LINE_SIZE_F32` scratch padding in `ggml-cpu.c` decode workspace sizing, and corrects `cur_pos` / `n_kv_cols` SWA & NTA boundary tracking inside `ggml_compute_forward_flash_attn_ext_f16_one_chunk` (`ops.cpp`).
+   - **Verified Persistent-Threadpool `32K` Decode Attention Speedup (16C Zen 5, `1.77e-8..2.54e-8` max abs error vs `nth=1` ref, `0%` regression on even-head `32/16`)**:
+     - `Q=12 / KV=4 / D=256` (`q8_0/q4_0`): `4.356 ms ->` **`2.699 ms` (`+61.4%`)**
+     - `Q=24 / KV=8 / D=128` (`q8_0/q4_0`): `4.152 ms ->` **`2.972 ms` (`+39.7%`)**
+     - `Q=24 / KV=8 / D=128` (`q4_0/q4_0`): **`+21.6%`**
+     - `Q=32 / KV=4 / 12T` (`q8_0/q4_0`): **`+15.1%`**
+3. **Native C++ Chained-Prefix HARP-Cache v2 & Python Causal Fix (`tools/server/rc_harp_radix.h`, `speculative/cpp/rc_harp_radix.h`, `speculative/cpp/test_harp_radix.cpp`, `kv_cache/harp_cache.py`)**:
+   - Replaces unchained block hashing in `kv_cache/harp_cache.py` with chained causal prefix hashing `H_k = FNV64(H_{k-1} || B_k)` + `model_fingerprint` (eliminating false-positive prefix matches across diverged prompts; verified by divergence regression tests in `kv_cache/test_harp_cache.py`).
+   - Adds standalone zero-dependency C++17 `rc_harp_radix.h` (verified under ASan/UBSan via `speculative/cpp/test_harp_radix.cpp` and synced byte-for-byte in Preflight Gate 3 & Gate 9), wired directly into `llama-server` (`server-slot-sched.{h,cpp}` & `server-context.cpp`):
+     - **O(L/256) Chained Radix Slot Lookup + True LRU Eviction + Non-Destructive Shared-Prefix Preservation** (fixes the upstream `f_keep < 0.25` cliff for long shared prefixes `lcp >= 512`).
+     - **Opt-In `/dev/shm` Persistent Slot Mirror (`LLAMA_MODCHIP_HARP_SHM=1` + `--slot-save-path`)**: `0600` permissions, anti-symlink `O_NOFOLLOW`, atomic `.tmp` -> rename writes, and 24-byte `harp_<fp>.idx` ancestor index.
+   - **Verified Live `llama-server` Multi-Turn + Cold-Restart Benchmark (`8B Q4_K_M`, `-ctk q8_0 -ctv q4_0`, `LLAMA_MODCHIP_HARP_SHM=1`)**:
+     - Cold Turn 1: `14,468 ms` -> Multi-Branch Turn 2 (`cache_n = 1303`): **`1,285 ms` (`11.3×`)** -> Causal Divergence Turn 4: `cache_n = 0` (exact safety) -> **Cold Server Restart Turn 5 restored `1,302 / 1,319` tokens (`105.20 MiB`) from `/dev/shm` in `16.40 ms` (`6.41 GiB/s`, `1,351 ms` total TTFT, `10.7×` speedup)**.
+   - **Zero GGUF checkpoint changes** — all `v3.0` / `v3.1.1` GGUF SHA-256s remain 100% identical.
+4. **12 Rebuilt Static-`libgomp` Portable `GLIBC_2.30` Linux `x86_64` Binaries, Tarball & Patch (`v3.2.0` `SHA256SUMS`)**:
+   - Built on `ubuntu:20.04` (`gcc-10/g++-10`, `GLIBC <= 2.30`, static `libgomp.a` + `libstdc++.a` + `libgcc.a`, `0` `%zmm` in `-avx2`, `0` `vdpbf16ps` in `-avx512`, `0` dynamic `libgomp`/`libstdc++`/`libssl` dependencies):
+     - `43a090791e3d062be28106e65101418f644bb21c13feab681f4a471ce84419ab  llama-modchip-v3.2.patch`
+     - `0cf2d3bcd31349d98bcef1d23af3545912b70930049437e8aa7f6cf5e2ff2082  llama-server-modchip-linux-x86_64-avx512`
+     - `d96745036cb44f76bce70237fc1e474058958e4d2eff739b85415eac4c78131d  llama-server-modchip-linux-x86_64-avx2` *(and `llama-server-modchip-linux-x86_64`)*
+     - `dc4c9da5016a8bf4407e14691407b0471625bb775cf76ad2a71e7bc25e0a98af  llama-cli-modchip-linux-x86_64-avx512`
+     - `08c6236eec64d645b0528d1752f8423bfa028753c8f974c46b6556b1a9022709  llama-cli-modchip-linux-x86_64-avx2` *(and `llama-cli-modchip-linux-x86_64`)*
+     - `9e40525f859214dc36aab36cb99bc81b68762816e1dbe07b31dc8d92b2a037e6  llama-bench-modchip-linux-x86_64-avx512`
+     - `5d6f9c7a8fd63d3ba6243f3c96b64fe7ae1fd762d814e8b509b9589465a7cff6  llama-bench-modchip-linux-x86_64-avx2`
+     - `b52c9b537ec9dc6f635b2d45e20b6d6b48123eacb7218584be5e1056a51e5913  llama-perplexity-modchip-linux-x86_64-avx512`
+     - `edae007a49e88e14d2d9a79f0d07fb2b32ee003c6016f55610806bf2ddbdfcc0  llama-perplexity-modchip-linux-x86_64-avx2`
+     - `f24985fa7f595aded7bc9cb523bbf4153362126e80f7bf161b339d5c07352cbe  llama-quantize-modchip-linux-x86_64-avx512`
+     - `d8a00d6853b9c345a48c66ffa8948ac52d08b48db65c949831bfd2e890d49424  llama-quantize-modchip-linux-x86_64-avx2`
+     - `5f3cd4d73e7407817d6da2680150f27202d85291275d56221502709782d5ed1c  llama-modchip-v3.2.0-linux-x86_64.tar.gz`
 
 ---
 
@@ -8,7 +49,7 @@
 
 **Release Date:** November 2026  
 **Highlights:**
-1. **Cross-ISA Bit-Identical SIMD Feature Sanitization (`speculative/cpp/rc_arbiter_l1.h`, [`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch), `speculative/cpp/test_routecrack2.cpp`)**:
+1. **Cross-ISA Bit-Identical SIMD Feature Sanitization (`speculative/cpp/rc_arbiter_l1.h`, [`patches/archive/llama-modchip-v3.1.patch`](patches/archive/llama-modchip-v3.1.patch), `speculative/cpp/test_routecrack2.cpp`)**:
    - Added `sanitize_feature()` (`std::isfinite(v) ? v : 0.0f`) over a stack-local sanitized copy of the 16 input feature lanes prior to SIMD dot products in `rc2_l1::predict_accept_prob()` while preserving `sizeof(RC2L1ArbiterWeights) == 832 B` (`13` cache lines).
    - Eliminates `NaN` / `+Inf` / `-Inf` lane divergence between `AVX-512F`, `AVX2+FMA`, `ARM64 NEON`, and scalar fallbacks — empirically verified bit-identical across all three x86-64 ISAs under `-fsanitize=address,undefined` in `speculative/cpp/test_routecrack2.cpp`.
    - Rebuilt all **12 portable static-`libgomp` `GLIBC <= 2.30` Linux `x86_64` binaries** (`llama-server`, `llama-cli`, `llama-bench`, `llama-perplexity`, `llama-quantize` × `-avx512`/`-avx2` + generic `-avx2` aliases) from `llama.cpp @ de32b268c` (`b12416`) + `patches/llama-modchip-v3.1.patch` (`SHA256 = abc54c7960ca1cff00bcd9e0fd9b78f7400cc1f86629492127f8d481245d81b2`), verified `max_glibc <= 2.30`, `0` dynamic `libgomp`/`libstdc++`, `0` `%zmm` in `-avx2`, and `0` `vdpbf16ps` in `-avx512`.
@@ -44,7 +85,7 @@
 
 **Release Date:** November 2026  
 **Highlights:**
-1. **`RouteCrack 2.0` (`--spec-type routecrack2`) — Unification of All 3 Speculative Mechanisms ([`speculative/cpp/rc_routecrack2.h`](speculative/cpp/rc_routecrack2.h), [`speculative/cpp/rc_arbiter_l1.h`](speculative/cpp/rc_arbiter_l1.h), [`patches/llama-modchip-v3.1.patch`](patches/llama-modchip-v3.1.patch))**:
+1. **`RouteCrack 2.0` (`--spec-type routecrack2`) — Unification of All 3 Speculative Mechanisms ([`speculative/cpp/rc_routecrack2.h`](speculative/cpp/rc_routecrack2.h), [`speculative/cpp/rc_arbiter_l1.h`](speculative/cpp/rc_arbiter_l1.h), [`patches/archive/llama-modchip-v3.1.patch`](patches/archive/llama-modchip-v3.1.patch))**:
    - **Root Architectural Bottleneck Solved**: On 1-layer NextN MTP models (`Qwen3.8-Flash-Next` `blk.48`, `chain_heads == false`), standard `--spec-type draft-mtp` (`n_max = 3`) executes `3 × ~15 ms` sequential `248K` `lm_head` passes feeding its own `pending_h` without target intermediate hidden states or symbolic suffix extension, and immediately halts fallback drafting (`dp.drafting = false`) — never invoking context n-gram or Zobrist TT drafters to extend `[prompt..., id_last, mtp_t0]` into `[mtp_t0, d_1..d_4]`. Conversely, on non-MTP models (`DeepSeek-V4 284B` & `Nemotron-3.5 30B`), uncalibrated multi-token tails can over-draft weak prose tokens or suffer single-occurrence prompt self-corroboration and JSON/prose mode-bleed.
    - **Unified 3-Method Pipeline**:
      1. **Phase A — Sub-250ns Fast-Path Suffix Bypass**: Queries an incremental **O(1) Two-Zone 3-Gram Index** (`16,384`-token Hot Zone + `24,576`-token Prefix Zone with O(1) rollback undo) cross-checked against Stockfish TT refutations. When in-context consensus satisfies the L1 Micro-Arbiter's `fastpath_q0_min` gate, `RouteCrack 2.0` drafts up to `5` tokens in `< 250 ns`, skipping the `~15 ms` MTP `248K` `lm_head` pass altogether.

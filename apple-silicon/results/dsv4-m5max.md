@@ -7,7 +7,7 @@
 Machine: Apple M5 Max (6 Super + 12 Performance cores), 64 GB unified memory, macOS 27.2,
 `iogpu.wired_limit_mb=57344`. Model: `DeepSeek-V4-Flash-0731-Fractal-0000{1,2,3}-of-00003.gguf`
 (60,729,886,080 bytes, 56.56 GiB). Engine: built by [`../build-dsv4-engine.sh`](../build-dsv4-engine.sh)
-(originally measured on llama.cpp `d2f83055` with the M5 Max Metal port; now folded into unified [`../../patches/llama-modchip-v3.1.patch`](../../patches/llama-modchip-v3.1.patch) on `de32b268c`).
+(originally measured on llama.cpp `d2f83055` with the M5 Max Metal port; now folded into unified [`../../patches/llama-modchip-v3.2.patch`](../../patches/llama-modchip-v3.2.patch) on `46eb1742d`).
 Launch with [`../run-dsv4.sh`](../run-dsv4.sh).
 
 ## Results
