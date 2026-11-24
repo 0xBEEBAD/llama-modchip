@@ -179,6 +179,113 @@ class TestHARPCache(unittest.TestCase):
         engine.close()
         engine.close()
 
+    def test_hash_collision_does_not_leave_stale_radix_page(self):
+        """
+        A 64-bit hash collision must evict the colliding page from the Radix Tree at
+        EVERY depth it occupies. `_radix_nodes` is keyed by hash alone, so the O(1)
+        prune fast path only sees the deepest parent link and used to leave an outer
+        node holding a page that had already been evicted and whose physical slot had
+        been recycled - resolve_prefix then returned that stale page as a cache hit.
+        """
+        import kv_cache.harp_cache as harp_mod
+        shm = f"/dev/shm/harp_kv_cache_test_collide_{_UID}.bin"
+        original = harp_mod.hash_token_block
+        engine = HARPCacheEngine(shm_path=shm, max_pages=4)
+        try:
+            # Force every block to hash to the same value -> guaranteed 64-bit collision.
+            harp_mod.hash_token_block = lambda tokens, prev_hash=harp_mod.FNV_OFFSET_BASIS: 999
+            block_a = [3000 + i for i in range(32)]
+            block_b = [7000 + i for i in range(32)]
+
+            # Store A, hit A again, then store B -> B collides with A and evicts it.
+            engine.store_prefix(block_a + block_a + block_b)
+
+            # The colliding page must be gone: A must NOT resolve as a cache hit.
+            cached, matched, remaining = engine.resolve_prefix(block_a)
+            self.assertEqual(cached, 0, "evicted page must not resolve as a hit")
+            self.assertEqual(matched, [])
+            self.assertEqual(len(remaining), 32)
+
+            # No Radix node may still point at the evicted page.
+            stale = [
+                entry.get("page")
+                for entry in engine.radix_root.values()
+                if entry.get("page") is not None and entry["page"].tokens == block_a
+            ]
+            self.assertEqual(stale, [], "Radix Tree still references the evicted page")
+
+            # The surviving page must still resolve correctly.
+            cached_b, matched_b, _ = engine.resolve_prefix(block_b)
+            self.assertEqual(cached_b, 32)
+            self.assertEqual(matched_b[0].tokens, block_b)
+        finally:
+            harp_mod.hash_token_block = original
+            engine.close()
+            if os.path.exists(shm):
+                os.remove(shm)
+
+
+    def test_lru_eviction_does_not_leave_stale_radix_page(self):
+        """
+        A multi-depth hash (same chained hash reached via different causal prefixes)
+        must be fully pruned when its page is evicted by the normal LRU allocator.
+        `_radix_nodes` is keyed by hash alone and only remembers the deepest parent,
+        so the O(1) path used to leave the outer node holding the evicted page while
+        its physical slot was recycled for an unrelated block — resolve_prefix then
+        returned a stale hit and read shared-memory data belonging to that other block.
+        """
+        import time as _time
+        import kv_cache.harp_cache as harp_mod
+        shm = f"/dev/shm/harp_kv_cache_test_lru_stale_{_UID}.bin"
+        original = harp_mod.hash_token_block
+        real = original
+        block_a = [1000 + i for i in range(32)]
+
+        def fake_hash(tokens, prev_hash=harp_mod.FNV_OFFSET_BASIS):
+            # Force block A to hash to a constant at every depth, so [A, A] and [A, B]
+            # produce the SAME chained hash 999 at depth 0 (multi-depth collision).
+            if list(tokens) == block_a:
+                return 999
+            return real(tokens, prev_hash=prev_hash)
+
+        engine = HARPCacheEngine(shm_path=shm, max_pages=2)
+        try:
+            harp_mod.hash_token_block = fake_hash
+            engine.store_prefix(block_a + block_a)
+
+            # Confirm the multi-depth hash was detected.
+            self.assertIn(999, engine._multi_depth_hashes)
+
+            # Fill the arena, then force the stale A page to be the LRU victim.
+            engine.store_prefix([5000 + i for i in range(32)])
+            now = _time.time()
+            for page in engine.hash_to_page.values():
+                if 999 in engine.hash_to_page and page is engine.hash_to_page[999]:
+                    page.last_accessed = now - 100
+
+            # LRU eviction fires on the next store (arena is full).
+            engine.store_prefix([6000 + i for i in range(32)])  # triggers LRU eviction
+
+            self.assertGreater(engine.evictions, 0)
+            self.assertNotIn(999, engine.hash_to_page, "A's page must be evicted")
+
+            # No Radix node may still reference the evicted A page.
+            stale = [
+                entry.get("page")
+                for entry in engine.radix_root.values()
+                if entry.get("page") is not None and entry["page"].tokens == block_a
+            ]
+            self.assertEqual(stale, [], "Radix Tree still references the LRU-evicted page")
+
+            cached, matched, _ = engine.resolve_prefix(block_a)
+            self.assertEqual(cached, 0, "evicted page must NOT resolve as a stale hit")
+            self.assertEqual(matched, [])
+        finally:
+            harp_mod.hash_token_block = original
+            engine.close()
+            if os.path.exists(shm):
+                os.remove(shm)
+
 
 if __name__ == "__main__":
     unittest.main()
